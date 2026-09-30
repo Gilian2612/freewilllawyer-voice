@@ -33,6 +33,21 @@ pip install --upgrade pip -q
 pip install -r requirements.txt -q
 echo "Dependencies installed"
 
+# Download Piper binary (native build; the pip package has no wheels for Python 3.14)
+echo ""
+PIPER_VERSION="2023.11.14-2"
+if [ ! -x "piper/piper" ]; then
+  echo "Downloading Piper binary..."
+  curl -L -o piper_macos_aarch64.tar.gz \
+    "https://github.com/rhasspy/piper/releases/download/$PIPER_VERSION/piper_macos_aarch64.tar.gz"
+  tar -xzf piper_macos_aarch64.tar.gz
+  rm piper_macos_aarch64.tar.gz
+  xattr -dr com.apple.quarantine piper 2>/dev/null || true
+  echo "Piper binary installed at ./piper/piper"
+else
+  echo "Piper binary already present, skipping"
+fi
+
 # Download voice models
 echo ""
 echo "Downloading voice models (this may take a few minutes)..."

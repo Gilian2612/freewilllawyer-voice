@@ -12,6 +12,7 @@ app = FastAPI(title="Free Will Lawyer Voice API")
 
 VOICES_DIR = Path(__file__).parent / "voices"
 STATIC_DIR = Path(__file__).parent / "static"
+PIPER_BIN = Path(__file__).parent / "piper" / "piper"
 
 VOICE_MAP = {
     "en": {
@@ -45,7 +46,7 @@ async def health():
 
 
 @app.post("/speak")
-async def speak(req: TTSRequest):
+def speak(req: TTSRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
@@ -58,12 +59,18 @@ async def speak(req: TTSRequest):
             detail=f"Voice model for '{lang}' not found. Run setup.sh to download voices.",
         )
 
+    if not PIPER_BIN.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Piper binary not found. Run setup.sh to download it.",
+        )
+
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
         cmd = [
-            "piper",
+            str(PIPER_BIN),
             "--model", str(voice["model"]),
             "--config", str(voice["config"]),
             "--output_file", tmp_path,

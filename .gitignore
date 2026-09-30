@@ -1,0 +1,6 @@
+venv/
+piper/
+voices/*.onnx
+voices/*.onnx.json
+.DS_Store
+__pycache__/
