@@ -1,34 +1,37 @@
-import os
 import io
-import subprocess
-import tempfile
+import struct
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 app = FastAPI(title="Free Will Lawyer Voice API")
 
 VOICES_DIR = Path(__file__).parent / "voices"
 STATIC_DIR = Path(__file__).parent / "static"
-PIPER_BIN = Path(__file__).parent / "piper" / "piper"
 
 VOICE_MAP = {
-    "en": {
-        "model": VOICES_DIR / "en_US-lessac-medium.onnx",
-        "config": VOICES_DIR / "en_US-lessac-medium.onnx.json",
-    },
-    "es": {
-        "model": VOICES_DIR / "es_ES-sharvard-medium.onnx",
-        "config": VOICES_DIR / "es_ES-sharvard-medium.onnx.json",
-    },
+    "en_lessac": VOICES_DIR / "en_US-lessac-medium.onnx",
+    "en_amy":    VOICES_DIR / "en_US-amy-medium.onnx",
+    "es_sharvard": VOICES_DIR / "es_ES-sharvard-medium.onnx",
+    "es_mx":     VOICES_DIR / "es_MX-ald-medium.onnx",
 }
+
+_voices = {}
+
+def get_voice(voice_id: str):
+    if voice_id not in _voices:
+        from piper.voice import PiperVoice
+        model_path = VOICE_MAP[voice_id]
+        if not model_path.exists():
+            raise HTTPException(status_code=503, detail=f"Voice '{voice_id}' not found.")
+        _voices[voice_id] = PiperVoice.load(str(model_path))
+    return _voices[voice_id]
 
 
 class TTSRequest(BaseModel):
     text: str
-    lang: str = "en"
+    voice: str = "en_lessac"
     speed: float = 1.0
 
 
@@ -46,63 +49,48 @@ async def health():
 
 
 @app.post("/speak")
-def speak(req: TTSRequest):
+async def speak(req: TTSRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    lang = req.lang if req.lang in VOICE_MAP else "en"
-    voice = VOICE_MAP[lang]
-
-    if not voice["model"].exists():
-        raise HTTPException(
-            status_code=503,
-            detail=f"Voice model for '{lang}' not found. Run setup.sh to download voices.",
-        )
-
-    if not PIPER_BIN.exists():
-        raise HTTPException(
-            status_code=503,
-            detail="Piper binary not found. Run setup.sh to download it.",
-        )
-
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp_path = tmp.name
+    voice_id = req.voice if req.voice in VOICE_MAP else "en_lessac"
 
     try:
-        cmd = [
-            str(PIPER_BIN),
-            "--model", str(voice["model"]),
-            "--config", str(voice["config"]),
-            "--output_file", tmp_path,
-            "--length_scale", str(1.0 / req.speed),
-        ]
-        result = subprocess.run(
-            cmd,
-            input=req.text.encode("utf-8"),
-            capture_output=True,
-            timeout=30,
-        )
+        voice = get_voice(voice_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=result.stderr.decode())
+    try:
+        audio_data = b""
+        sample_rate = 22050
+        for chunk in voice.synthesize(req.text):
+            audio_data += chunk.audio_int16_bytes
+            sample_rate = voice.config.sample_rate
 
-        audio_bytes = Path(tmp_path).read_bytes()
-        return StreamingResponse(
-            io.BytesIO(audio_bytes),
-            media_type="audio/wav",
-            headers={"Content-Disposition": "inline; filename=speech.wav"},
-        )
+        num_channels = 1
+        bits_per_sample = 16
+        byte_rate = sample_rate * num_channels * bits_per_sample // 8
+        block_align = num_channels * bits_per_sample // 8
+        data_size = len(audio_data)
+        wav = io.BytesIO()
+        wav.write(b"RIFF")
+        wav.write(struct.pack("<I", 36 + data_size))
+        wav.write(b"WAVE")
+        wav.write(b"fmt ")
+        wav.write(struct.pack("<IHHIIHH", 16, 1, num_channels, sample_rate, byte_rate, block_align, bits_per_sample))
+        wav.write(b"data")
+        wav.write(struct.pack("<I", data_size))
+        wav.write(audio_data)
+        wav.seek(0)
 
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        return StreamingResponse(wav, media_type="audio/wav",
+                                 headers={"Content-Disposition": "inline; filename=speech.wav"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

@@ -10,71 +10,45 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #f5f4f0;
-      --surface: #ffffff;
-      --border: rgba(0,0,0,0.10);
-      --border-strong: rgba(0,0,0,0.18);
-      --text-primary: #1a1a18;
-      --text-secondary: #5f5e5a;
-      --text-muted: #888780;
-      --accent: #1a1a18;
-      --accent-fg: #ffffff;
-      --radius: 8px;
+      --bg: #f5f4f0; --surface: #ffffff; --border: rgba(0,0,0,0.10);
+      --border-strong: rgba(0,0,0,0.18); --text-primary: #1a1a18;
+      --text-secondary: #5f5e5a; --text-muted: #888780;
+      --accent: #1a1a18; --accent-fg: #ffffff; --radius: 8px;
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #1a1a18;
-        --surface: #2c2c2a;
-        --border: rgba(255,255,255,0.10);
-        --border-strong: rgba(255,255,255,0.18);
-        --text-primary: #f1efe8;
-        --text-secondary: #b4b2a9;
-        --text-muted: #888780;
-        --accent: #f1efe8;
-        --accent-fg: #1a1a18;
+        --bg: #1a1a18; --surface: #2c2c2a; --border: rgba(255,255,255,0.10);
+        --border-strong: rgba(255,255,255,0.18); --text-primary: #f1efe8;
+        --text-secondary: #b4b2a9; --text-muted: #888780;
+        --accent: #f1efe8; --accent-fg: #1a1a18;
       }
     }
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg);
-      color: var(--text-primary);
-      min-height: 100vh;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 2rem 1rem;
-    }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text-primary);
+      min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
     .wrap { width: 100%; max-width: 620px; }
     .header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.75rem; }
-    .logo {
-      width: 42px; height: 42px; border-radius: 10px;
-      background: var(--accent); display: flex; align-items: center; justify-content: center;
-    }
+    .logo { width: 42px; height: 42px; border-radius: 10px; background: var(--accent);
+      display: flex; align-items: center; justify-content: center; }
     .logo i { color: var(--accent-fg); font-size: 20px; }
     h1 { font-size: 17px; font-weight: 500; color: var(--text-primary); }
     .sub { font-size: 13px; color: var(--text-muted); margin-top: 1px; }
-    .lang-row { display: flex; gap: 8px; margin-bottom: 1rem; }
-    .lang-btn {
-      flex: 1; padding: 8px; border: 0.5px solid var(--border-strong);
-      border-radius: var(--radius); background: var(--surface);
-      color: var(--text-secondary); font-size: 14px; font-family: inherit;
-      cursor: pointer; transition: all 0.15s;
-    }
-    .lang-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-    .card {
-      background: var(--surface); border: 0.5px solid var(--border);
-      border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem;
-    }
+    .card { background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
     .card-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; display: block; }
-    textarea {
-      width: 100%; min-height: 160px; font-size: 15px; line-height: 1.65;
-      resize: vertical; border: 0.5px solid var(--border);
-      border-radius: var(--radius); background: var(--bg);
-      color: var(--text-primary); padding: 10px 12px;
-      font-family: inherit;
-    }
+    textarea { width: 100%; min-height: 160px; font-size: 15px; line-height: 1.65;
+      resize: vertical; border: 0.5px solid var(--border); border-radius: var(--radius);
+      background: var(--bg); color: var(--text-primary); padding: 10px 12px; font-family: inherit; }
     textarea:focus { outline: none; border-color: var(--border-strong); }
     .char-count { font-size: 12px; color: var(--text-muted); text-align: right; margin-top: 5px; }
+    .voice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 1rem; }
+    .voice-section { margin-bottom: 4px; }
+    .voice-section-label { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; display: block;
+      text-transform: uppercase; letter-spacing: 0.05em; }
+    .voice-btn { width: 100%; padding: 8px 10px; border: 0.5px solid var(--border-strong);
+      border-radius: var(--radius); background: var(--surface); color: var(--text-secondary);
+      font-size: 13px; font-family: inherit; cursor: pointer; transition: all 0.15s; text-align: left; }
+    .voice-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+    .voice-btn:hover:not(.active) { background: var(--bg); }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .field { display: flex; flex-direction: column; gap: 5px; }
     .field label { font-size: 12px; color: var(--text-muted); }
@@ -82,13 +56,9 @@
     .slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
     .slider-val { font-size: 13px; color: var(--text-secondary); min-width: 36px; text-align: right; }
     .actions { display: flex; gap: 8px; margin-bottom: 0.75rem; }
-    .btn {
-      display: flex; align-items: center; gap: 6px;
-      padding: 9px 16px; border-radius: var(--radius); font-size: 14px;
-      font-family: inherit; cursor: pointer;
-      border: 0.5px solid var(--border-strong);
-      background: var(--surface); color: var(--text-primary); transition: all 0.15s;
-    }
+    .btn { display: flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius);
+      font-size: 14px; font-family: inherit; cursor: pointer; border: 0.5px solid var(--border-strong);
+      background: var(--surface); color: var(--text-primary); transition: all 0.15s; }
     .btn:hover { background: var(--bg); }
     .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
     .btn.primary:hover { opacity: 0.85; }
@@ -113,14 +83,29 @@
     </div>
   </div>
 
-  <div class="lang-row">
-    <button class="lang-btn active" id="btn-en" onclick="setLang('en')">🇺🇸 English</button>
-    <button class="lang-btn" id="btn-es" onclick="setLang('es')">🇪🇸 Español</button>
+  <div class="card">
+    <span class="card-label">Select voice</span>
+    <div class="voice-grid">
+      <div class="voice-section">
+        <span class="voice-section-label">🇺🇸 English</span>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="voice-btn active" data-voice="en_lessac" onclick="setVoice(this)">Lessac (Male)</button>
+          <button class="voice-btn" data-voice="en_amy" onclick="setVoice(this)">Amy (Female)</button>
+        </div>
+      </div>
+      <div class="voice-section">
+        <span class="voice-section-label">🇪🇸 Español</span>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="voice-btn" data-voice="es_sharvard" onclick="setVoice(this)">Sharvard (ES)</button>
+          <button class="voice-btn" data-voice="es_mx" onclick="setVoice(this)">Ald (MX)</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
-    <span class="card-label" id="textarea-label">Paste your script here</span>
-    <textarea id="script-input" placeholder="Paste or type your Instagram script here..." oninput="updateCount()"></textarea>
+    <span class="card-label">Script</span>
+    <textarea id="script-input" placeholder="Paste or type your script here..." oninput="updateCount()"></textarea>
     <p class="char-count" id="char-count">0 characters</p>
   </div>
 
@@ -173,24 +158,20 @@
 </div>
 
 <script>
-  let currentLang = 'en';
+  let currentVoice = 'en_lessac';
   let currentAudio = null;
   let progTimer = null;
   let progVal = 0;
 
-  const labels = {
-    en: { area: 'Paste your script here', placeholder: 'Paste or type your Instagram script here...', play: 'Play script' },
-    es: { area: 'Pega tu script aquí', placeholder: 'Pega o escribe tu script de Instagram aquí...', play: 'Reproducir script' }
-  };
-
-  function setLang(lang) {
-    currentLang = lang;
-    document.getElementById('btn-en').className = 'lang-btn' + (lang === 'en' ? ' active' : '');
-    document.getElementById('btn-es').className = 'lang-btn' + (lang === 'es' ? ' active' : '');
-    const l = labels[lang];
-    document.getElementById('textarea-label').textContent = l.area;
-    document.getElementById('script-input').placeholder = l.placeholder;
-    document.getElementById('play-label').textContent = l.play;
+  function setVoice(btn) {
+    document.querySelectorAll('.voice-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentVoice = btn.dataset.voice;
+    const isEs = currentVoice.startsWith('es');
+    document.getElementById('script-input').placeholder = isEs
+      ? 'Pega o escribe tu script aquí...'
+      : 'Paste or type your script here...';
+    document.getElementById('play-label').textContent = isEs ? 'Reproducir script' : 'Play script';
   }
 
   function updateCount() {
@@ -223,7 +204,8 @@
     document.getElementById('play-btn').disabled = true;
     document.getElementById('stop-btn').disabled = false;
     document.getElementById('dl-row').className = 'download-row';
-    setStatus(currentLang === 'en' ? 'Generating audio...' : 'Generando audio...');
+    const isEs = currentVoice.startsWith('es');
+    setStatus(isEs ? 'Generando audio...' : 'Generating audio...');
     startProgress();
 
     try {
@@ -232,7 +214,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          lang: currentLang,
+          voice: currentVoice,
           speed: parseFloat(document.getElementById('speed').value),
         })
       });
@@ -255,7 +237,7 @@
       document.getElementById('dl-row').className = 'download-row visible';
 
       endProgress(true);
-      setStatus(currentLang === 'en' ? 'Playing...' : 'Reproduciendo...');
+      setStatus(isEs ? 'Reproduciendo...' : 'Playing...');
 
       player.onended = () => {
         setStatus('');
