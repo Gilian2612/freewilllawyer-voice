@@ -21,9 +21,49 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-El setup descarga dos modelos de voz (~130 MB cada uno):
-- Inglés: `en_US-lessac-medium`
-- Español: `es_ES-sharvard-medium`
+El setup descarga las 11 voces (~860 MB en total, 60–120 MB cada una). Si una ya existe, la salta.
+
+| Perfil | Voz | Modelo |
+|---|---|---|
+| Free Will Lawyer (EN) | Lessac (hombre) | `en_US-lessac-medium` |
+| | Amy (mujer) | `en_US-amy-medium` |
+| | Ryan (hombre, cálido) | `en_US-ryan-high` |
+| | Cori (mujer UK, calmada) | `en_GB-cori-high` |
+| | LJ (mujer, neutral/formal) | `en_US-ljspeech-high` |
+| | Joe (hombre, grave, tipo locutor) | `en_US-joe-medium` |
+| Free Will Lawyer ES | Sharvard (ES) | `es_ES-sharvard-medium` |
+| | Ald (MX) | `es_MX-ald-medium` |
+| | Daniela (AR, mujer, cálida) | `es_AR-daniela-high` |
+| | Claude (MX) | `es_MX-claude-high` |
+| | Dave (ES, neutral) | `es_ES-davefx-medium` |
+
+### Descargar las voces manualmente (sin `setup.sh`)
+
+Desde la carpeta del proyecto:
+
+```bash
+mkdir -p voices
+BASE=https://huggingface.co/rhasspy/piper-voices/resolve/main
+for v in \
+  en/en_US/lessac/medium/en_US-lessac-medium \
+  en/en_US/amy/medium/en_US-amy-medium \
+  en/en_US/ryan/high/en_US-ryan-high \
+  en/en_GB/cori/high/en_GB-cori-high \
+  en/en_US/ljspeech/high/en_US-ljspeech-high \
+  en/en_US/joe/medium/en_US-joe-medium \
+  es/es_ES/sharvard/medium/es_ES-sharvard-medium \
+  es/es_MX/ald/medium/es_MX-ald-medium \
+  es/es_AR/daniela/high/es_AR-daniela-high \
+  es/es_MX/claude/high/es_MX-claude-high \
+  es/es_ES/davefx/medium/es_ES-davefx-medium
+do
+  n=$(basename $v)
+  curl -L --fail -o voices/$n.onnx      $BASE/$v.onnx
+  curl -L --fail -o voices/$n.onnx.json $BASE/$v.onnx.json
+done
+```
+
+Para agregar otra voz: descárgala igual, añádela a `VOICE_MAP` en `main.py` y a la lista `voices` del perfil (`PROFILES`), y ponle etiqueta en `VOICE_LABELS` de `static/index.html`. El catálogo completo está en https://huggingface.co/rhasspy/piper-voices
 
 ## Levantar el servidor
 
@@ -56,12 +96,15 @@ freewilllawyer-voice/
 ├── setup.sh             # Script de instalación
 ├── static/
 │   └── index.html       # Interfaz web
-└── voices/              # Modelos de voz (se llenan con setup.sh)
-    ├── en_US-lessac-medium.onnx
-    ├── en_US-lessac-medium.onnx.json
-    ├── es_ES-sharvard-medium.onnx
-    └── es_ES-sharvard-medium.onnx.json
+├── data/                # Scripts guardados por perfil (se crea solo, no va en git)
+└── voices/              # Modelos de voz .onnx + .onnx.json (se llenan con setup.sh)
 ```
+
+## Uso
+
+- Arriba eliges la cuenta: **Free Will Lawyer** (EN) o **Free Will Lawyer ES**. Cada una muestra sus voces y su lista de scripts guardados.
+- **Import .txt / .docx** carga un archivo en el cuadro del script.
+- **Speed** cambia la velocidad. **Expressiveness** y **Rhythm variation** controlan cuánta variación tiene la voz (valores bajos = más plana y uniforme, altos = más natural y suelta). Por defecto están en *auto* (valores propios de cada voz); el enlace *(auto)* los restablece.
 
 ## Detener el servidor
 

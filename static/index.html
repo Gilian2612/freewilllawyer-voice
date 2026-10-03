@@ -70,6 +70,21 @@
     .download-row.visible { display: flex; }
     hr { border: none; border-top: 0.5px solid var(--border); margin: 1rem 0; }
     .footer-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+    .profile-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 1rem; }
+    .profile-btn { padding: 10px 12px; border: 0.5px solid var(--border-strong); border-radius: var(--radius);
+      background: var(--surface); color: var(--text-secondary); font-family: inherit; cursor: pointer; text-align: left; }
+    .profile-btn .p-name { font-size: 14px; font-weight: 500; display: block; }
+    .profile-btn .p-handle { font-size: 12px; opacity: 0.7; }
+    .profile-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+    .script-tools { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .btn.small { padding: 6px 12px; font-size: 13px; }
+    .saved-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 0.5px solid var(--border); }
+    .saved-item:first-of-type { border-top: none; }
+    .saved-title { flex: 1; font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .saved-title:hover { text-decoration: underline; }
+    .icon-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; }
+    .icon-btn:hover { color: var(--text-primary); }
+    .empty { font-size: 12px; color: var(--text-muted); }
     audio { width: 100%; height: 36px; border-radius: var(--radius); }
   </style>
 </head>
@@ -79,34 +94,35 @@
     <div class="logo"><i class="ti ti-microphone"></i></div>
     <div>
       <h1>Free Will Lawyer — Voice Reader</h1>
-      <p class="sub">freewilllawyer &nbsp;·&nbsp; freewilllawyer_es</p>
+      <p class="sub">Instagram script reader</p>
     </div>
   </div>
 
+  <div class="profile-tabs" id="profile-tabs"></div>
+
   <div class="card">
-    <span class="card-label">Select voice</span>
-    <div class="voice-grid">
-      <div class="voice-section">
-        <span class="voice-section-label">🇺🇸 English</span>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <button class="voice-btn active" data-voice="en_lessac" onclick="setVoice(this)">Lessac (Male)</button>
-          <button class="voice-btn" data-voice="en_amy" onclick="setVoice(this)">Amy (Female)</button>
-        </div>
-      </div>
-      <div class="voice-section">
-        <span class="voice-section-label">🇪🇸 Español</span>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <button class="voice-btn" data-voice="es_sharvard" onclick="setVoice(this)">Sharvard (ES)</button>
-          <button class="voice-btn" data-voice="es_mx" onclick="setVoice(this)">Ald (MX)</button>
-        </div>
-      </div>
-    </div>
+    <span class="card-label">Voice</span>
+    <div id="voice-list" style="display:flex;flex-direction:column;gap:6px"></div>
   </div>
 
   <div class="card">
     <span class="card-label">Script</span>
     <textarea id="script-input" placeholder="Paste or type your script here..." oninput="updateCount()"></textarea>
     <p class="char-count" id="char-count">0 characters</p>
+    <div class="script-tools">
+      <button class="btn small" onclick="document.getElementById('file-input').click()">
+        <i class="ti ti-file-import"></i> <span id="import-label">Import .txt / .docx</span>
+      </button>
+      <button class="btn small" onclick="saveScript()">
+        <i class="ti ti-device-floppy"></i> <span id="save-label">Save script</span>
+      </button>
+      <input type="file" id="file-input" accept=".txt,.docx" hidden onchange="importFile(this)">
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="card-label" id="saved-label">Saved scripts</span>
+    <div id="saved-list"></div>
   </div>
 
   <div class="card">
@@ -117,6 +133,22 @@
           <input type="range" id="speed" min="0.6" max="1.6" step="0.1" value="1.0"
             oninput="document.getElementById('speed-val').textContent=parseFloat(this.value).toFixed(1)+'×'">
           <span class="slider-val" id="speed-val">1.0×</span>
+        </div>
+      </div>
+      <div class="field">
+        <label id="lbl-expr">Expressiveness <a href="#" onclick="resetNoise();return false" style="color:var(--text-muted)">(auto)</a></label>
+        <div class="slider-row">
+          <input type="range" id="noise" min="0" max="1.2" step="0.05" value="0.667"
+            oninput="noiseTouched.noise=true;document.getElementById('noise-val').textContent=parseFloat(this.value).toFixed(2)">
+          <span class="slider-val" id="noise-val">auto</span>
+        </div>
+      </div>
+      <div class="field">
+        <label id="lbl-rhythm">Rhythm variation</label>
+        <div class="slider-row">
+          <input type="range" id="noisew" min="0" max="1.2" step="0.05" value="0.8"
+            oninput="noiseTouched.noisew=true;document.getElementById('noisew-val').textContent=parseFloat(this.value).toFixed(2)">
+          <span class="slider-val" id="noisew-val">auto</span>
         </div>
       </div>
       <div class="field">
@@ -158,20 +190,122 @@
 </div>
 
 <script>
+  const noiseTouched = { noise: false, noisew: false };
+  function resetNoise() {
+    noiseTouched.noise = noiseTouched.noisew = false;
+    document.getElementById('noise').value = 0.667; document.getElementById('noise-val').textContent = 'auto';
+    document.getElementById('noisew').value = 0.8; document.getElementById('noisew-val').textContent = 'auto';
+  }
+
+  let profiles = {};
+  let currentProfile = 'en';
   let currentVoice = 'en_lessac';
   let currentAudio = null;
   let progTimer = null;
   let progVal = 0;
 
-  function setVoice(btn) {
-    document.querySelectorAll('.voice-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentVoice = btn.dataset.voice;
-    const isEs = currentVoice.startsWith('es');
-    document.getElementById('script-input').placeholder = isEs
-      ? 'Pega o escribe tu script aquí...'
-      : 'Paste or type your script here...';
-    document.getElementById('play-label').textContent = isEs ? 'Reproducir script' : 'Play script';
+  const VOICE_LABELS = {
+    en_lessac: 'Lessac (Male)', en_amy: 'Amy (Female)',
+    es_sharvard: 'Sharvard (ES)', es_mx: 'Ald (MX)',
+    en_ryan: 'Ryan (Male · warm)', en_cori: 'Cori (UK Female · calm)', en_ljspeech: 'LJ (Female · neutral)', en_joe: 'Joe (Male · deep, announcer)',
+    es_daniela: 'Daniela (AR Mujer · cálida)', es_claude: 'Claude (MX Hombre)', es_davefx: 'Dave (ES Hombre · neutral)',
+  };
+  const T = {
+    en: { placeholder: 'Paste or type your script here...', play: 'Play script', imp: 'Import .txt / .docx',
+          save: 'Save script', expr: 'Expressiveness', rhythm: 'Rhythm variation', saved: 'Saved scripts', none: 'No saved scripts yet.', titlePrompt: 'Script title:' },
+    es: { placeholder: 'Pega o escribe tu script aquí...', play: 'Reproducir script', imp: 'Importar .txt / .docx',
+          save: 'Guardar script', expr: 'Expresividad', rhythm: 'Variación de ritmo', saved: 'Scripts guardados', none: 'Aún no hay scripts guardados.', titlePrompt: 'Título del script:' },
+  };
+  const t = () => T[profiles[currentProfile]?.lang || 'en'];
+
+  async function init() {
+    profiles = await (await fetch('/profiles')).json();
+    const saved = localStorage.getItem('fwl_profile');
+    selectProfile(profiles[saved] ? saved : 'en');
+  }
+
+  function selectProfile(id) {
+    currentProfile = id;
+    localStorage.setItem('fwl_profile', id);
+    const p = profiles[id];
+    document.getElementById('profile-tabs').innerHTML = Object.entries(profiles).map(([pid, pr]) =>
+      `<button class="profile-btn ${pid === id ? 'active' : ''}" onclick="selectProfile('${pid}')">
+         <span class="p-name">${pr.name}</span><span class="p-handle">@${pr.handle}</span></button>`).join('');
+    document.getElementById('voice-list').innerHTML = p.voices.map(v =>
+      `<button class="voice-btn" data-voice="${v}" onclick="setVoice('${v}')">${VOICE_LABELS[v] || v}</button>`).join('');
+    setVoice(p.default_voice);
+    document.getElementById('script-input').placeholder = t().placeholder;
+    document.getElementById('play-label').textContent = t().play;
+    document.getElementById('import-label').textContent = t().imp;
+    document.getElementById('save-label').textContent = t().save;
+    document.getElementById('saved-label').textContent = t().saved;
+    document.getElementById('lbl-expr').firstChild.textContent = t().expr + ' ';
+    document.getElementById('lbl-rhythm').textContent = t().rhythm;
+    loadSaved();
+  }
+
+  function setVoice(v) {
+    currentVoice = v;
+    document.querySelectorAll('.voice-btn').forEach(b => b.classList.toggle('active', b.dataset.voice === v));
+  }
+
+  async function loadSaved() {
+    const box = document.getElementById('saved-list');
+    const res = await fetch('/scripts/' + currentProfile);
+    const items = res.ok ? await res.json() : [];
+    window._saved = items;
+    box.innerHTML = items.length ? items.map(i =>
+      `<div class="saved-item">
+         <span class="saved-title" onclick="openSaved('${i.id}')">${escapeHtml(i.title)}</span>
+         <button class="icon-btn" title="Delete" onclick="deleteSaved('${i.id}')"><i class="ti ti-trash"></i></button>
+       </div>`).join('') : `<p class="empty">${t().none}</p>`;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function openSaved(id) {
+    const item = window._saved.find(i => i.id === id);
+    if (!item) return;
+    document.getElementById('script-input').value = item.text;
+    updateCount();
+  }
+
+  async function saveScript() {
+    const text = document.getElementById('script-input').value;
+    if (!text.trim()) { setStatus(t().placeholder); return; }
+    const title = prompt(t().titlePrompt, text.trim().split('\n')[0].slice(0, 50));
+    if (title === null) return;
+    const res = await fetch('/scripts/' + currentProfile, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, text })
+    });
+    if (!res.ok) { setStatus('Error: ' + (await res.json()).detail); return; }
+    loadSaved();
+  }
+
+  async function deleteSaved(id) {
+    await fetch(`/scripts/${currentProfile}/${id}`, { method: 'DELETE' });
+    loadSaved();
+  }
+
+  async function importFile(input) {
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/import', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Import failed');
+      document.getElementById('script-input').value = data.text;
+      updateCount();
+      setStatus('');
+    } catch (e) {
+      setStatus('Error: ' + e.message);
+    }
   }
 
   function updateCount() {
@@ -216,6 +350,8 @@
           text,
           voice: currentVoice,
           speed: parseFloat(document.getElementById('speed').value),
+          noise_scale: noiseTouched.noise ? parseFloat(document.getElementById('noise').value) : null,
+          noise_w_scale: noiseTouched.noisew ? parseFloat(document.getElementById('noisew').value) : null,
         })
       });
 
@@ -261,6 +397,8 @@
     document.getElementById('stop-btn').disabled = true;
     setStatus('');
   }
+
+  init();
 </script>
 </body>
 </html>

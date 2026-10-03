@@ -55,29 +55,31 @@ mkdir -p voices
 
 BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 
-# English voice
-if [ ! -f "voices/en_US-lessac-medium.onnx" ]; then
-  echo "Downloading English voice..."
-  curl -L -o voices/en_US-lessac-medium.onnx \
-    "$BASE_URL/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
-  curl -L -o voices/en_US-lessac-medium.onnx.json \
-    "$BASE_URL/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
-  echo "English voice downloaded"
-else
-  echo "English voice already present, skipping"
-fi
+# Voices: <lang>/<locale>/<speaker>/<quality>/<full-name>
+VOICES=(
+  "en/en_US/lessac/medium/en_US-lessac-medium"
+  "en/en_US/amy/medium/en_US-amy-medium"
+  "en/en_US/ryan/high/en_US-ryan-high"
+  "en/en_GB/cori/high/en_GB-cori-high"
+  "en/en_US/ljspeech/high/en_US-ljspeech-high"
+  "en/en_US/joe/medium/en_US-joe-medium"
+  "es/es_ES/sharvard/medium/es_ES-sharvard-medium"
+  "es/es_MX/ald/medium/es_MX-ald-medium"
+  "es/es_AR/daniela/high/es_AR-daniela-high"
+  "es/es_MX/claude/high/es_MX-claude-high"
+  "es/es_ES/davefx/medium/es_ES-davefx-medium"
+)
 
-# Spanish voice
-if [ ! -f "voices/es_ES-sharvard-medium.onnx" ]; then
-  echo "Downloading Spanish voice..."
-  curl -L -o voices/es_ES-sharvard-medium.onnx \
-    "$BASE_URL/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx"
-  curl -L -o voices/es_ES-sharvard-medium.onnx.json \
-    "$BASE_URL/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json"
-  echo "Spanish voice downloaded"
-else
-  echo "Spanish voice already present, skipping"
-fi
+for v in "${VOICES[@]}"; do
+  name=$(basename "$v")
+  if [ -s "voices/$name.onnx" ] && [ -s "voices/$name.onnx.json" ]; then
+    echo "$name already present, skipping"
+  else
+    echo "Downloading $name..."
+    curl -L --fail -o "voices/$name.onnx" "$BASE_URL/$v.onnx"
+    curl -L --fail -o "voices/$name.onnx.json" "$BASE_URL/$v.onnx.json"
+  fi
+done
 
 echo ""
 echo "=== Setup complete ==="
