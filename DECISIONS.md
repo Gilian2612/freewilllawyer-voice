@@ -1,4 +1,171 @@
-# Registro de decisiones — Free Will Lawyer Voice
+# Free Will Lawyer Voice — Decision log / Registro de decisiones
+
+**Language / Idioma:** [English](#english) · [Español](#español)
+
+---
+
+# English
+
+This document records **what was built, why, which alternatives were rejected and what is still open**. Usage instructions are in [README.md](README.md).
+
+> **How it was built.** The project was developed in working sessions with Claude Code (Anthropic's AI assistant). The assistant proposed options, wrote code and ran tests; **the project author defined the goal, chose between the options and set the scope limits** (see "Who decided what"). The test results quoted here are the ones that were run during the session; anything that could not be verified is marked as such.
+
+---
+
+## 1. The problem
+
+Original request from the client (a law firm with two Instagram accounts, *Free Will Lawyer* and *Free Will Lawyer ES*):
+
+> "Please set up a voice AI for me that can read scripts that we have on Instagram."
+
+Requirements derived from the conversation:
+- Synthetic voice that reads scripts in **English and Spanish**, one account per language.
+- Used by a **non-technical team** from the browser, with nothing to install.
+- Scripts may be **confidential** (law firm) → privacy and access control matter.
+- Runs on a **client Mac that is always on**.
+
+## 2. Baseline: a local server with Piper TTS
+
+**Decision: local speech synthesis with [Piper](https://github.com/rhasspy/piper) + FastAPI**, rather than a cloud service.
+
+| Criterion | Local (Piper) | Cloud (e.g. ElevenLabs) |
+|---|---|---|
+| Cost | Free | Pay per use |
+| Script privacy | Text never leaves the network | Text is sent to a third party |
+| Quality / emotion | Good, no emotion control | More expressive |
+| Internet dependency | Only for setup | Always |
+
+The lack of expressiveness was accepted in exchange for zero cost and privacy. Piper has no "serious vs. casual" tone control; the closest thing is two variation parameters (see §5).
+
+## 3. "Linking an account": three levels, the simplest was chosen
+
+Three levels of Instagram integration were laid out:
+
+1. **Accounts as profiles** in the interface (EN / ES selector, each with its own voices and scripts).
+2. Import scripts from Instagram through the Graph API (needs Business/Creator accounts, a Facebook page and a Meta app; only useful if the scripts live in the captions).
+3. Publish the audio back to Instagram.
+
+**Author's decision:** drop 3, build 1, and keep 2 as a future option. Reason: 1 covers the real use without depending on Meta permissions, and it was not known whether the scripts live on Instagram.
+
+**Importing scripts from a file (`.txt` / `.docx`):** added at the author's request as an alternative to level 2.
+- 2 MB cap, text read in memory (the file is never stored or executed).
+- `.docx` through `python-docx` (paragraphs are read; **tables are not**). `.doc` and PDF are rejected with a clear error.
+- `.txt` accepts UTF-8 and Windows-1252 so accents and ñ don't break.
+
+**Saved scripts live on the server** (`data/scripts.json`, per profile), not in the browser, so every device on the network sees the same list. Cost: each server has its own list.
+
+## 4. A bug found along the way: the speed slider did nothing
+
+While reviewing the code it turned out that `speed` reached the server and was never passed to Piper. Fixed with `length_scale = 1 / speed` (clamped to 0.5×–2×).
+
+**Verification, and a testing mistake.** The first test gave inconsistent audio sizes (at 0.6× the audio came out shorter than at 1.0×). Cause: **an old server was still holding port 8000**, so the test never reached the new code. It was caught because `/health` listed fewer voices than expected. After stopping the old server the relationship was correct (0.6× → 136 KB, 1.0× → 95 KB, 1.6× → 64 KB). Since then tests run on **a different port (8001)** so they don't depend on what is running on 8000.
+
+## 5. Voices: selection criteria
+
+6 voices were added to the 4 original ones (11 in total, counting Joe), looking for **different warmth** in the Piper catalog, 3 per language, favoring `high` quality.
+
+**Variation control ("temperature"-style).** Two parameters were exposed: `noise_scale` (expressiveness) and `noise_w_scale` (rhythm variation). **Design decision:** the default is *auto* (`null` is sent and Piper uses each voice's own value), because defaults differ between voices and forcing one would change the sound without the user asking for it.
+
+**Deep announcer-style voice.** The assistant cannot "listen", so instead of choosing blindly the **fundamental frequency (F0)** of the male candidates was measured by autocorrelation:
+
+| Voice | Approx. F0 |
+|---|---|
+| en_GB-alan-medium | 90 Hz |
+| **en_US-joe-medium** (chosen) | 98 Hz |
+| en_US-norman-medium | 100 Hz |
+| other existing male voices | 119–171 Hz |
+
+In Spanish the catalog has **no** voice deeper than the existing ones (≈120 Hz); the alternative would be lowering the pitch with audio processing, which can sound artificial. Left undone.
+
+**Honest limitations:** the warmth choices were based on the catalog and the pitch measurement, **not on human listening**, and must be confirmed by ear. The measurement suggested that the "Lessac (Male)" label is wrong (193 Hz, similar to Amy) — **still to be fixed**.
+
+## 6. Deployment: from "run a .sh" to "never touch the Terminal"
+
+**Author's requirement:** the team is not used to the Terminal, so any contact with it had to be avoided.
+
+Options evaluated: a `.command` file, an Automator app, an AppleScript app, `launchd`.
+
+**Decision: `launchd` + a Dock app that only opens the interface.** Reasoning:
+- The Mac is **always on** → a service that starts by itself and restarts on failure fits better than a button that starts the server.
+- Automator "saves work" only in appearance: the logic (don't start twice, wait for `/health`, open the browser) has to be written anyway, and an Automator app with no log is hard to debug. The service writes to `logs/server.log`, readable from the Terminal if something fails.
+- `Free Will Voice.app` is generated with `osacompile` on each Mac (not versioned). It restarts the service if stopped, and if the server doesn't answer it shows a dialog with the log path, no Terminal needed.
+
+**Author's decision:** keep `setup.sh` (installs dependencies and voices) and `instalar.command` (installs the service) **as two separate steps**. Merging them (one double-click) was weighed against its costs: errors that are harder to locate, an ~860 MB download with no clear progress signal, and repeating steps on reinstall.
+
+**Real problems found and how they were resolved:**
+- **`piper-tts` was not in `requirements.txt`.** It worked on the development machine because it had been installed by hand in the `venv`; on the client's Mac it failed with `No module named 'piper.config'` (the binary's `piper/` folder shadowed the package). The dependency was added. *Lesson: test in a clean environment, not just the development one.*
+- **macOS protected folders.** A background service cannot read `~/Downloads`, Desktop or Documents. `instalar.command` detects those paths and stops with a clear message instead of failing silently.
+
+**Limits that code cannot fix:** automatic login after a reboot (a LaunchAgent needs a session), the Mac not going to sleep, and a fixed IP in the router. They are documented in the README.
+
+## 7. Security
+
+A review was done of what someone on the same WiFi could do, **by reading the code**, not by assuming:
+
+- **Cannot** read files on the Mac or run commands: the API has no route that reads or writes arbitrary files, and no static folder is mounted.
+- **Could** (before the password): read, change and delete the saved scripts; flood the server with no limit; and see the traffic (unencrypted HTTP).
+
+**Author's decision:** implement **only** (a) an access password and (b) **100 requests per minute**; the rest (WiFi password, firewall) is up to whoever manages the network.
+
+Implementation:
+- A single shared password; a 30-day session cookie signed with HMAC (`httponly`, `samesite=lax`). Changing the password invalidates every session.
+- With no password configured, the server **generates a random one** at startup: it is never open by default.
+- Limit of 100 requests/min per IP and **10 login attempts/min** per IP (against brute force).
+- `cambiar-clave.command` to reset it without the Terminal (dialog with hidden input).
+- Verified with `curl`: no session → `401`, with session → `200`, request 101 gets `429`, and the project files (`.command`, `main.py`, `data/…`, `../` attempts) are **not reachable** even with a session.
+
+**Correction about the firewall.** It had been assumed that the macOS firewall was on; it is actually **off by default**. This was corrected and documented as an administrator task.
+
+**An unrequested measure, reverted.** The assistant disabled FastAPI's `/docs` without being asked. The author asked to turn it back on **excluding the authentication endpoints** from the schema (`include_in_schema=False`); `/docs` remains behind the login.
+
+## 8. Access from outside the network (not implemented yet)
+
+Evaluated: **Tailscale** (private VPN), **Cloudflare Tunnel** and **ngrok**; none of them needs ports opened in the router (the Mac makes the outbound connection).
+
+**Recommendation for the current case (one person in another country): Tailscale**: only invited devices get in, traffic is end-to-end encrypted (important with confidential scripts) and it is free at this size. Cloudflare/ngrok mean exposing a public URL and sending traffic through a third party.
+
+**Technical implication identified in advance:** behind a public tunnel, every request reaches the server from `127.0.0.1`, so the per-IP limit would become **shared by everyone** and an attacker could lock the team out of the login. The real IP would have to be read from the tunnel's headers. With Tailscale this problem does not appear.
+
+Prices were quoted from memory and must be confirmed on the official pages.
+
+## 9. Who decided what
+
+| Decision | Who |
+|---|---|
+| Drop publishing to Instagram; build profiles + file import | Author |
+| Look for voices with different warmth, 3 per language, plus a deep announcer voice | Author (criteria) / Assistant (selection and measurement) |
+| Keep the team away from the Terminal; Mac always on | Author (requirement) |
+| `launchd` + Dock app instead of Automator alone | Assistant proposed, author approved |
+| `setup.sh` and `instalar.command` kept separate | Author |
+| Only password + 100 req/min (nothing else) | Author |
+| Re-enable `/docs` without the login endpoints | Author (corrected an assistant measure) |
+| Tests on port 8001; verification with `curl` | Assistant |
+
+## 10. Open items and known limitations
+
+- **Not verified end to end by the assistant:** automatic restart after reboot/logout and the "server stopped → the app revives it" case (the author tested the installation on the client's Mac).
+- An unknown `voice` in `/speak` **silently falls back to `en_lessac`** instead of returning an error.
+- `speed` and the noise parameters are applied, but there is **no text size limit** on `/speak`.
+- Possibly wrong Lessac label (§5); no deep voice in Spanish.
+- Dependencies pinned from 2024 (FastAPI, `python-multipart`): they should be updated.
+- No favicon (it causes a harmless 404 in the log).
+- Remote access (§8) not implemented.
+- Importing directly from Instagram (level 2) not implemented.
+
+## 11. Commit timeline
+
+| Commit | Change |
+|---|---|
+| `2d3d8e6` | Initial setup: Piper TTS server |
+| `55404d2` | 4-voice selector |
+| `41e5afd` | Profiles, import, 6 new voices, speed and variation |
+| `03e7909` | Fix: `piper-tts` was missing from `requirements.txt` |
+| `9b01ad1` | Automatic startup (`launchd`), Dock app, installers |
+| `f39c9d4` | Access password and request limit |
+
+---
+
+# Español
 
 Este documento cuenta **qué se construyó, por qué, qué alternativas se descartaron y qué falta**. Las instrucciones de uso están en [README.md](README.md).
 

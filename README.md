@@ -1,8 +1,169 @@
 # Free Will Lawyer — Voice Server
 
+**Language / Idioma:** [English](#english) · [Español](#español)
+
+---
+
+# English
+
+Local text-to-speech server built on Piper TTS. It runs on the host Mac, and the team uses it from any device on the same WiFi network.
+
+> Design decisions, rejected alternatives and open items are in [DECISIONS.md](DECISIONS.md).
+
+## Requirements
+
+- macOS with Python 3.10+
+- Internet access only for the initial setup (model downloads)
+- All other devices must be on the same WiFi network
+
+## Setup (first time only)
+
+```bash
+# 1. Go to the project folder
+cd freewilllawyer-voice
+
+# 2. Make the setup script executable
+chmod +x setup.sh
+
+# 3. Run the setup (downloads dependencies and voices)
+./setup.sh
+```
+
+The setup downloads all 11 voices (~860 MB in total, 60–120 MB each). Voices that already exist are skipped.
+
+| Profile | Voice | Model |
+|---|---|---|
+| Free Will Lawyer (EN) | Lessac (male) | `en_US-lessac-medium` |
+| | Amy (female) | `en_US-amy-medium` |
+| | Ryan (male, warm) | `en_US-ryan-high` |
+| | Cori (UK female, calm) | `en_GB-cori-high` |
+| | LJ (female, neutral/formal) | `en_US-ljspeech-high` |
+| | Joe (male, deep, announcer-style) | `en_US-joe-medium` |
+| Free Will Lawyer ES | Sharvard (ES) | `es_ES-sharvard-medium` |
+| | Ald (MX) | `es_MX-ald-medium` |
+| | Daniela (AR, female, warm) | `es_AR-daniela-high` |
+| | Claude (MX) | `es_MX-claude-high` |
+| | Dave (ES, neutral) | `es_ES-davefx-medium` |
+
+### Downloading the voices manually (without `setup.sh`)
+
+From the project folder:
+
+```bash
+mkdir -p voices
+BASE=https://huggingface.co/rhasspy/piper-voices/resolve/main
+for v in \
+  en/en_US/lessac/medium/en_US-lessac-medium \
+  en/en_US/amy/medium/en_US-amy-medium \
+  en/en_US/ryan/high/en_US-ryan-high \
+  en/en_GB/cori/high/en_GB-cori-high \
+  en/en_US/ljspeech/high/en_US-ljspeech-high \
+  en/en_US/joe/medium/en_US-joe-medium \
+  es/es_ES/sharvard/medium/es_ES-sharvard-medium \
+  es/es_MX/ald/medium/es_MX-ald-medium \
+  es/es_AR/daniela/high/es_AR-daniela-high \
+  es/es_MX/claude/high/es_MX-claude-high \
+  es/es_ES/davefx/medium/es_ES-davefx-medium
+do
+  n=$(basename $v)
+  curl -L --fail -o voices/$n.onnx      $BASE/$v.onnx
+  curl -L --fail -o voices/$n.onnx.json $BASE/$v.onnx.json
+done
+```
+
+To add another voice: download it the same way, add it to `VOICE_MAP` in `main.py` and to the profile's `voices` list (`PROFILES`), and give it a label in `VOICE_LABELS` in `static/index.html`. The full catalog is at https://huggingface.co/rhasspy/piper-voices
+
+## Automatic startup (no Terminal needed for the team)
+
+Designed for a Mac that stays on all the time. The administrator does this **once**, after `./setup.sh`:
+
+1. The project must live in a regular folder, for example `~/freewilllawyer-voice` (**not** in Downloads, Desktop or Documents; macOS blocks background services from reading those).
+2. If you downloaded the project as a zip, remove the quarantine flag and set permissions (once):
+   ```bash
+   cd ~/freewilllawyer-voice
+   xattr -dr com.apple.quarantine .
+   chmod +x *.command setup.sh
+   ```
+3. Double-click **`instalar.command`**. It:
+   - makes the server start by itself at login and restart if it crashes (`launchd`),
+   - keeps the Mac awake while the server runs (`caffeinate`),
+   - creates **`Free Will Voice.app`**, which opens the interface (and restarts the server if it was stopped).
+4. Drag `Free Will Voice.app` to the Dock.
+5. System settings (once): turn off automatic sleep and enable **automatic login** for the user, so the server comes back by itself after a reboot.
+6. Reserve the Mac's IP in the router (or use `http://MAC-NAME.local:8000`) and have the team bookmark that URL.
+
+The team only opens the URL in a browser; they don't need the Terminal.
+
+- **Log (if something fails):** `logs/server.log`. From the Terminal: `tail -f ~/freewilllawyer-voice/logs/server.log`
+- **Remove automatic startup:** double-click `desinstalar.command`.
+- After updating the code (`git pull`), restart the service: `launchctl kickstart -k gui/$(id -u)/com.freewilllawyer.voice`
+
+## Access password and usage limit
+
+- Opening the interface asks for a **shared password** (a single one for the whole team). Each browser remembers it for 30 days.
+- `instalar.command` asks for it once in a dialog window. To change it later, double-click **`cambiar-clave.command`** (it restarts the server and signs everyone out).
+- It is stored in `data/password.txt` (not tracked by git). It can also be provided through the `FWL_PASSWORD` environment variable.
+- If the server starts with no password configured (for example `python main.py` on a fresh clone), it **generates a random one**, prints it in the Terminal and saves it to `data/password.txt`.
+- **Limits:** 100 requests per minute per device, and 10 password attempts per minute. Going over returns "Too many requests" and clears by itself after a minute.
+- Network security (up to whoever manages the Mac/WiFi): a strong WiFi password and the **macOS firewall turned on** (it is off by default: System Settings → Network → Firewall).
+
+## Running the server by hand (development mode)
+
+```bash
+source venv/bin/activate
+python main.py
+```
+
+The server runs at:
+- **Local:** http://localhost:8000
+- **Network:** http://YOUR_LOCAL_IP:8000
+
+To find your local IP:
+```bash
+ipconfig getifaddr en0
+```
+
+## Access from other devices
+
+1. All devices must be on the **same WiFi network**
+2. Open the browser and go to `http://MACBOOK_IP:8000`
+3. Done, nothing to install
+
+## Project structure
+
+```
+freewilllawyer-voice/
+├── main.py                # FastAPI server
+├── requirements.txt       # Python dependencies
+├── setup.sh               # Installation script (dependencies + voices)
+├── instalar.command       # One-time install of the auto-start service + Dock app
+├── desinstalar.command    # Removes the auto-start service
+├── cambiar-clave.command  # Sets / changes the access password
+├── static/
+│   ├── index.html         # Web interface
+│   └── login.html         # Password screen
+├── data/                  # Saved scripts, password (created automatically, not in git)
+├── logs/                  # server.log (created automatically, not in git)
+└── voices/                # .onnx + .onnx.json voice models (filled by setup.sh)
+```
+
+## Usage
+
+- At the top you pick the account: **Free Will Lawyer** (EN) or **Free Will Lawyer ES**. Each one shows its own voices and its own list of saved scripts.
+- **Import .txt / .docx** loads a file into the script box.
+- **Speed** changes the speaking rate. **Expressiveness** and **Rhythm variation** control how much variation the voice has (low values = flatter and more uniform, high values = more natural and loose). They default to *auto* (each voice's own values); the *(auto)* link resets them.
+
+## Stopping the server
+
+`Ctrl + C` in the Terminal where it is running.
+
+---
+
+# Español
+
 Servidor local de síntesis de voz con Piper TTS. Corre en la MacBook host y el equipo accede desde cualquier dispositivo en la misma red WiFi.
 
-> Las decisiones de diseño, alternativas descartadas y pendientes están en [DECISIONS.md](DECISIONS.md).
+> Las decisiones de diseño, alternativas descartadas y pendientes están en [DECISIONS.md](DECISIONS.md) (inglés primero, español después).
 
 ## Requisitos
 
@@ -127,13 +288,18 @@ ipconfig getifaddr en0
 
 ```
 freewilllawyer-voice/
-├── main.py              # Servidor FastAPI
-├── requirements.txt     # Dependencias Python
-├── setup.sh             # Script de instalación
+├── main.py                # Servidor FastAPI
+├── requirements.txt       # Dependencias Python
+├── setup.sh               # Script de instalación (dependencias + voces)
+├── instalar.command       # Instala una vez el servicio de arranque automático + app del Dock
+├── desinstalar.command    # Quita el servicio de arranque automático
+├── cambiar-clave.command  # Define / cambia la contraseña de acceso
 ├── static/
-│   └── index.html       # Interfaz web
-├── data/                # Scripts guardados por perfil (se crea solo, no va en git)
-└── voices/              # Modelos de voz .onnx + .onnx.json (se llenan con setup.sh)
+│   ├── index.html         # Interfaz web
+│   └── login.html         # Pantalla de contraseña
+├── data/                  # Scripts guardados, contraseña (se crea solo, no va en git)
+├── logs/                  # server.log (se crea solo, no va en git)
+└── voices/                # Modelos de voz .onnx + .onnx.json (se llenan con setup.sh)
 ```
 
 ## Uso
