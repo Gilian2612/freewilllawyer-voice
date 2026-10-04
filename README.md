@@ -2,6 +2,8 @@
 
 Servidor local de síntesis de voz con Piper TTS. Corre en la MacBook host y el equipo accede desde cualquier dispositivo en la misma red WiFi.
 
+> Las decisiones de diseño, alternativas descartadas y pendientes están en [DECISIONS.md](DECISIONS.md).
+
 ## Requisitos
 
 - macOS con Python 3.10+
