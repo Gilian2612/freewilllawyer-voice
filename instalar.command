@@ -27,6 +27,11 @@ esac
 
 mkdir -p "$ROOT/logs" "$PLIST_DIR"
 
+# Access password (asked once; change it later with cambiar-clave.command)
+if [ ! -s "$ROOT/data/password.txt" ] && [ -z "$DRY_RUN" ]; then
+  "$ROOT/cambiar-clave.command" --quiet || fail "Hace falta una contraseña de acceso. Vuelve a correr este archivo."
+fi
+
 cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -111,6 +116,7 @@ echo ""
 echo "Listo. El servidor arranca solo y se reinicia si falla."
 echo "  En esta Mac:      http://localhost:$PORT"
 echo "  Para el equipo:   http://$IP:$PORT   (guárdenlo como favorito)"
+echo "  Contraseña:       la que escribiste (para cambiarla: cambiar-clave.command)"
 echo "  Nombre de la Mac: http://$(scutil --get LocalHostName 2>/dev/null || hostname -s).local:$PORT"
 echo ""
 echo "Pendientes manuales (una sola vez):"

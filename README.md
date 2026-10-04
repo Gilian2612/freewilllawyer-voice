@@ -90,6 +90,15 @@ El equipo solo abre la URL en el navegador; no necesita Terminal.
 - **Quitar el arranque automático:** doble clic en `desinstalar.command`.
 - Si actualizas el código (`git pull`), reinicia el servicio: `launchctl kickstart -k gui/$(id -u)/com.freewilllawyer.voice`
 
+## Contraseña de acceso y límite de uso
+
+- Al abrir la interfaz se pide una **contraseña compartida** (una sola para todo el equipo). Queda recordada 30 días en cada navegador.
+- `instalar.command` la pide una vez en una ventana. Para cambiarla después: doble clic en **`cambiar-clave.command`** (reinicia el servidor y cierra las sesiones abiertas).
+- Se guarda en `data/password.txt` (no va en git). También puede darse con la variable `FWL_PASSWORD`.
+- Si el servidor arranca sin contraseña configurada (por ejemplo `python main.py` en un clon nuevo), **genera una al azar**, la muestra en la Terminal y la guarda en `data/password.txt`.
+- **Límites:** 100 peticiones por minuto por dispositivo, y 10 intentos de contraseña por minuto. Al pasarse responde "Too many requests" y se libera solo en un minuto.
+- Seguridad de red (a cargo de quien administre la Mac/WiFi): clave WiFi fuerte y **firewall de macOS activado** (viene apagado de fábrica: Ajustes del Sistema → Red → Firewall).
+
 ## Levantar el servidor a mano (modo desarrollo)
 
 ```bash

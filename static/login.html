@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Free Will Lawyer — Voice Reader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg:#f5f4f0; --surface:#fff; --border:rgba(0,0,0,.10); --border-strong:rgba(0,0,0,.18);
+      --text:#1a1a18; --muted:#888780; --accent:#1a1a18; --accent-fg:#fff; --err:#b3261e; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#1a1a18; --surface:#2c2c2a; --border:rgba(255,255,255,.10);
+      --border-strong:rgba(255,255,255,.18); --text:#f1efe8; --muted:#888780; --accent:#f1efe8; --accent-fg:#1a1a18; --err:#f2b8b5; } }
+    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh;
+      display:flex; align-items:center; justify-content:center; padding:1rem; }
+    .card { width:100%; max-width:360px; background:var(--surface); border:.5px solid var(--border);
+      border-radius:12px; padding:1.5rem; }
+    h1 { font-size:17px; font-weight:500; margin-bottom:4px; }
+    p { font-size:13px; color:var(--muted); margin-bottom:1rem; }
+    input { width:100%; padding:10px 12px; font-size:15px; font-family:inherit; border:.5px solid var(--border-strong);
+      border-radius:8px; background:var(--bg); color:var(--text); margin-bottom:10px; }
+    input:focus { outline:none; border-color:var(--text); }
+    button { width:100%; padding:10px; font-size:14px; font-family:inherit; border-radius:8px; cursor:pointer;
+      background:var(--accent); color:var(--accent-fg); border:.5px solid var(--accent); }
+    button:disabled { opacity:.4; cursor:not-allowed; }
+    .err { color:var(--err); font-size:13px; min-height:18px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <form class="card" onsubmit="login(event)">
+    <h1>Free Will Lawyer — Voice Reader</h1>
+    <p>Contraseña de acceso &nbsp;·&nbsp; Access password</p>
+    <input type="password" id="pw" autocomplete="current-password" autofocus required>
+    <button id="btn" type="submit">Entrar / Enter</button>
+    <div class="err" id="err"></div>
+  </form>
+<script>
+  async function login(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn'), err = document.getElementById('err');
+    btn.disabled = true; err.textContent = '';
+    try {
+      const res = await fetch('/login', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ password: document.getElementById('pw').value }) });
+      if (res.ok) { location.href = '/'; return; }
+      const d = await res.json().catch(() => ({}));
+      err.textContent = res.status === 401 ? 'Contraseña incorrecta / Wrong password'
+        : (d.detail || 'Error');
+    } catch (x) { err.textContent = 'No se pudo conectar / Could not connect'; }
+    btn.disabled = false;
+  }
+</script>
+</body>
+</html>

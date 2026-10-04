@@ -190,6 +190,13 @@
 </div>
 
 <script>
+  const _fetch = window.fetch;
+  window.fetch = async (...a) => {
+    const r = await _fetch(...a);
+    if (r.status === 401) location.href = '/login';
+    return r;
+  };
+
   const noiseTouched = { noise: false, noisew: false };
   function resetNoise() {
     noiseTouched.noise = noiseTouched.noisew = false;

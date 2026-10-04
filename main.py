@@ -1,12 +1,17 @@
+import hashlib
+import hmac
 import io
 import json
+import os
+import secrets
 import struct
 import threading
 import time
 import uuid
+from collections import defaultdict, deque
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from piper.config import SynthesisConfig
 
@@ -43,6 +48,81 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 _voices = {}
 _scripts_lock = threading.Lock()
 
+# --- Access control -------------------------------------------------------
+PASSWORD_FILE = DATA_DIR / "password.txt"
+SECRET_FILE = DATA_DIR / "secret.key"
+COOKIE_NAME = "fwl_session"
+COOKIE_MAX_AGE = 30 * 24 * 3600
+RATE_LIMIT = 100          # requests per minute, per client IP
+LOGIN_LIMIT = 10          # login attempts per minute, per client IP
+
+
+def _load_password() -> str:
+    pw = os.environ.get("FWL_PASSWORD", "").strip()
+    if pw:
+        return pw
+    if PASSWORD_FILE.exists() and PASSWORD_FILE.read_text(encoding="utf-8").strip():
+        return PASSWORD_FILE.read_text(encoding="utf-8").strip()
+    # No password configured: generate one so the server is never open by default
+    pw = secrets.token_urlsafe(6)
+    DATA_DIR.mkdir(exist_ok=True)
+    PASSWORD_FILE.write_text(pw, encoding="utf-8")
+    PASSWORD_FILE.chmod(0o600)
+    print(f"\n*** No password was set. Generated access password: {pw}\n"
+          f"    (saved in {PASSWORD_FILE}; change it with cambiar-clave.command)\n", flush=True)
+    return pw
+
+
+def _load_secret() -> bytes:
+    if not SECRET_FILE.exists():
+        DATA_DIR.mkdir(exist_ok=True)
+        SECRET_FILE.write_bytes(secrets.token_bytes(32))
+        SECRET_FILE.chmod(0o600)
+    return SECRET_FILE.read_bytes()
+
+
+PASSWORD = _load_password()
+_SECRET = _load_secret()
+# Cookie value depends on the password, so changing the password logs everyone out
+SESSION_TOKEN = hmac.new(_SECRET, PASSWORD.encode(), hashlib.sha256).hexdigest()
+
+_hits = defaultdict(deque)
+_login_hits = defaultdict(deque)
+_rate_lock = threading.Lock()
+
+
+def _over_limit(store: dict, ip: str, limit: int) -> bool:
+    now = time.monotonic()
+    with _rate_lock:
+        q = store[ip]
+        while q and now - q[0] > 60:
+            q.popleft()
+        if len(q) >= limit:
+            return True
+        q.append(now)
+        if len(store) > 1000:  # drop idle clients
+            for k in [k for k, v in store.items() if not v or now - v[-1] > 60]:
+                del store[k]
+        return False
+
+
+def _is_authed(request: Request) -> bool:
+    return hmac.compare_digest(request.cookies.get(COOKIE_NAME, ""), SESSION_TOKEN)
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next):
+    ip = request.client.host if request.client else "unknown"
+    if _over_limit(_hits, ip, RATE_LIMIT):
+        return JSONResponse({"detail": f"Too many requests (max {RATE_LIMIT}/min). Try again in a minute."},
+                            status_code=429, headers={"Retry-After": "60"})
+    path = request.url.path
+    if path in ("/login", "/health") or _is_authed(request):
+        return await call_next(request)
+    if request.method == "GET" and path == "/":
+        return RedirectResponse("/login")
+    return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+
 
 def load_scripts() -> dict:
     if SCRIPTS_FILE.exists():
@@ -75,6 +155,35 @@ class TTSRequest(BaseModel):
     speed: float = 1.0
     noise_scale: float | None = None
     noise_w_scale: float | None = None
+
+
+class LoginIn(BaseModel):
+    password: str
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page():
+    return (STATIC_DIR / "login.html").read_text(encoding="utf-8")
+
+
+@app.post("/login", include_in_schema=False)
+async def login(body: LoginIn, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if _over_limit(_login_hits, ip, LOGIN_LIMIT):
+        return JSONResponse({"detail": "Too many attempts. Wait a minute."}, status_code=429,
+                            headers={"Retry-After": "60"})
+    if not hmac.compare_digest(body.password.strip().encode(), PASSWORD.encode()):
+        return JSONResponse({"detail": "Wrong password"}, status_code=401)
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(COOKIE_NAME, SESSION_TOKEN, max_age=COOKIE_MAX_AGE, httponly=True, samesite="lax")
+    return resp
+
+
+@app.post("/logout", include_in_schema=False)
+async def logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
 
 
 @app.get("/", response_class=HTMLResponse)
