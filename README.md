@@ -65,7 +65,32 @@ done
 
 Para agregar otra voz: descárgala igual, añádela a `VOICE_MAP` en `main.py` y a la lista `voices` del perfil (`PROFILES`), y ponle etiqueta en `VOICE_LABELS` de `static/index.html`. El catálogo completo está en https://huggingface.co/rhasspy/piper-voices
 
-## Levantar el servidor
+## Arranque automático (sin Terminal para el equipo)
+
+Pensado para una Mac que queda siempre encendida. Se hace **una sola vez** por el administrador, después de `./setup.sh`:
+
+1. El proyecto debe estar en una carpeta normal, por ejemplo `~/freewilllawyer-voice` (**no** en Descargas, Escritorio ni Documentos; macOS bloquea el acceso a servicios en segundo plano).
+2. Si bajaste el proyecto como zip, quita la cuarentena y da permisos (una vez):
+   ```bash
+   cd ~/freewilllawyer-voice
+   xattr -dr com.apple.quarantine .
+   chmod +x *.command setup.sh
+   ```
+3. Doble clic en **`instalar.command`**. Esto:
+   - hace que el servidor arranque solo al iniciar sesión y se reinicie si se cae (`launchd`),
+   - evita que la Mac se duerma mientras el servidor corre (`caffeinate`),
+   - crea **`Free Will Voice.app`**, que abre la interfaz (y revive el servidor si estuviera detenido).
+4. Arrastra `Free Will Voice.app` al Dock.
+5. Ajustes del sistema (una vez): impedir el reposo automático e **inicio de sesión automático** del usuario, para que el servidor vuelva solo tras un reinicio.
+6. Reserva la IP de la Mac en el router (o usa `http://NOMBRE-DE-LA-MAC.local:8000`) y que el equipo guarde esa URL como favorito.
+
+El equipo solo abre la URL en el navegador; no necesita Terminal.
+
+- **Registro (si algo falla):** `logs/server.log`. Desde Terminal: `tail -f ~/freewilllawyer-voice/logs/server.log`
+- **Quitar el arranque automático:** doble clic en `desinstalar.command`.
+- Si actualizas el código (`git pull`), reinicia el servicio: `launchctl kickstart -k gui/$(id -u)/com.freewilllawyer.voice`
+
+## Levantar el servidor a mano (modo desarrollo)
 
 ```bash
 source venv/bin/activate
