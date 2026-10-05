@@ -79,6 +79,19 @@ In Spanish the catalog has **no** voice deeper than the existing ones (≈120 Hz
 
 **Honest limitations:** the warmth choices were based on the catalog and the pitch measurement, **not on human listening**, and must be confirmed by ear. The measurement suggested that the "Lessac (Male)" label is wrong (193 Hz, similar to Amy) — **still to be fixed**.
 
+### 5.1 Missing voice: fallback with a visible warning, and background re-download
+
+- **Before:** an unknown `voice` in `/speak` silently fell back to `en_lessac`.
+- **Now:** if the voice is not in `VOICE_MAP` or its files (`.onnx` and `.onnx.json`) are not both on disk, the server uses the default voice of the matching profile (`es` if the requested id starts with `es`, otherwise `en`). It adds the response header `X-Voice-Fallback` with the voice actually used. The UI shows a text warning that the selected voice is not available and which voice was used instead.
+- **Why:** a user can accidentally delete one or several voice files from the computer. Nothing verifies that all voices are present on the host, and there is no separate server to update them from: the server is the Mac itself. So the app keeps working with a voice from the list and tells the person what happened instead of failing or changing the voice silently.
+- **Automatic re-download (author's decision):** if the missing voice is a known one, the server also starts a background download from the Piper voices repository (Hugging Face, the same source as `setup.sh`) into `voices/`. **The current request still uses the default voice; the original voice is used from the next request.** The header `X-Voice-Downloading` makes the warning say that the voice is being downloaded.
+  - The remote path is derived from the file name (`en_US-joe-medium` → `en/en_US/joe/medium/...`), so only voices in the fixed `VOICE_MAP` can be downloaded, never a path coming from the user.
+  - Files are written as `.part` and renamed when complete (config first, model last), so a model on disk always has its config and a failed download leaves nothing half-written.
+  - One download per voice at a time; after a failure (for example no internet) it is not retried for 5 minutes.
+  - **Alternative weighed and not chosen:** download and wait inside the same request. A `high` voice is tens of MB and the app would look frozen.
+- **Verified by the assistant:** download into a temporary folder, loading the downloaded voice with Piper, no duplicate download while one is running, unknown ids do not start a download, a 404 leaves no files, and the retry cooldown. **Not verified:** the full flow over HTTP with the UI warning on screen, nor behavior under `launchd`.
+- Commit: `7bb4421` (fallback); the background download was added afterwards.
+
 ## 6. Deployment: from "run a .sh" to "never touch the Terminal"
 
 **Author's requirement:** the team is not used to the Terminal, so any contact with it had to be avoided.
@@ -97,6 +110,8 @@ Options evaluated: a `.command` file, an Automator app, an AppleScript app, `lau
 - **macOS protected folders.** A background service cannot read `~/Downloads`, Desktop or Documents. `instalar.command` detects those paths and stops with a clear message instead of failing silently.
 
 **Limits that code cannot fix:** automatic login after a reboot (a LaunchAgent needs a session), the Mac not going to sleep, and a fixed IP in the router. They are documented in the README.
+
+**Where things live and moving the project.** Voices live in `voices/` inside the project (`VOICES_DIR` is relative to `main.py`), and the automatic download of §5.1 writes there. If the whole folder is moved, voices, data and logs move with it. **But `instalar.command` writes the absolute path into the `launchd` service and the Dock app, so after moving the project `instalar.command` must be run again from the new location**; otherwise the service will not start after a reboot. Keeping voices outside the project (for example in `~/Library/Application Support`) would survive a move or a reinstall, but it was left out as a bigger change (see §12).
 
 ## 7. Security
 
@@ -144,7 +159,9 @@ Prices were quoted from memory and must be confirmed on the official pages.
 ## 10. Open items and known limitations
 
 - **Not verified end to end by the assistant:** automatic restart after reboot/logout and the "server stopped → the app revives it" case (the author tested the installation on the client's Mac).
-- An unknown `voice` in `/speak` **silently falls back to `en_lessac`** instead of returning an error.
+- An unknown or missing `voice` in `/speak` falls back to the profile's default voice with a warning instead of returning an error (§5.1). **There is no check at startup** that all voices are present on the host: a missing voice is only detected when someone asks for it, and that first request uses the default voice.
+- The fallback and the background download (§5.1) are **not covered by automated tests** and were not verified over HTTP/UI.
+- Moving the project folder requires running `instalar.command` again (§6); this is not yet documented in the README.
 - `speed` and the noise parameters are applied, but there is **no text size limit** on `/speak`.
 - Possibly wrong Lessac label (§5); no deep voice in Spanish.
 - Dependencies pinned from 2024 (FastAPI, `python-multipart`): they should be updated.
@@ -161,7 +178,31 @@ Prices were quoted from memory and must be confirmed on the official pages.
 | `41e5afd` | Profiles, import, 6 new voices, speed and variation |
 | `03e7909` | Fix: `piper-tts` was missing from `requirements.txt` |
 | `9b01ad1` | Automatic startup (`launchd`), Dock app, installers |
-| `f39c9d4` | Access password and request limit |
+| `f39c9d4` | Access password and request limit ("Fix auth service") |
+| `434bc8a` | Add `DECISIONS.md` |
+| `67180ab` | README and DECISIONS made bilingual |
+| `7bb4421` | Fallback to the default voice with a visible warning |
+
+## 12. Future decisions: packaged installer (not started, deferred to the end)
+
+Question evaluated: can everything be shipped as a `.dmg` / `.exe` style installer? Yes; nothing was implemented.
+
+**Mac (`.dmg` or `.pkg`)**
+- Today the project needs Python, a `venv` and the `.command` scripts. An installer would mean freezing it (PyInstaller / py2app) or embedding Python inside a `.app`.
+- The `launchd` service is currently created by `instalar.command`. A `.app` would have to create it on first launch, or a `.pkg` (which can install services) would be used instead of a `.dmg`.
+- `data/`, `voices/` and `logs/` would have to live in `~/Library/Application Support/...`, because a signed `.app` is not writable. This would also fix the "moving the folder breaks the service" problem.
+- The access password is asked by `cambiar-clave.command`; an installer would ask for it on a first-run screen.
+- Voices can be bundled (hundreds of MB) or downloaded on first launch; the automatic download already covers most of the second option.
+- Without an Apple Developer account (99 USD/year) to sign and notarize, macOS shows an "unidentified developer" warning.
+- `setup.sh` only downloads the Apple Silicon (`aarch64`) Piper binary; an Intel Mac would need another build.
+
+**Windows (`.exe`)**
+- It is a port, not just packaging: `launchd`, `caffeinate`, `.command`, the Dock app and `osascript` have no equivalent and would be replaced by a scheduled task or Windows service plus a shortcut or tray icon.
+- The installer would be built with Inno Setup or NSIS, with Python frozen by PyInstaller. Piper and the voices have Windows builds.
+- Without a code-signing certificate, SmartScreen warns the user.
+- Clearly more work than the Mac installer and it would need testing on a Windows machine.
+
+**Recommendation:** with a single Mac as host (the current case), the `.dmg`/`.pkg` is the natural path. A Windows `.exe` is only worth it if a host will run Windows. **Open question:** will this be installed on more than one machine, or on Windows?
 
 ---
 
@@ -240,6 +281,19 @@ En español **no hay** una voz más grave que las existentes (≈120 Hz) en el c
 
 **Limitaciones honestas:** la elección de calidez se basó en el catálogo y en la medición de tono, **no en escucha humana**; debe confirmarse a oído. La medición sugirió que la etiqueta "Lessac (Male)" es incorrecta (193 Hz, similar a Amy) — **pendiente de corregir**.
 
+### 5.1 Voz ausente: respaldo con aviso visible y redescarga en segundo plano
+
+- **Antes:** un `voice` desconocido en `/speak` caía en silencio a `en_lessac`.
+- **Ahora:** si la voz no está en `VOICE_MAP` o no están en disco sus dos archivos (`.onnx` y `.onnx.json`), el servidor usa la voz predeterminada del perfil correspondiente (`es` si el id empieza con `es`, si no `en`). Agrega el header `X-Voice-Fallback` con la voz realmente usada. La interfaz muestra un aviso en texto de que la voz seleccionada no está disponible y qué voz se usó en su lugar.
+- **Por qué:** un usuario puede borrar por accidente una o varias voces del equipo. Nada verifica que todas las voces estén en el host, y no hay un servidor aparte desde donde actualizarlas: el servidor es la propia Mac. Por eso la app sigue funcionando con una voz de la lista y le dice a la persona lo que pasó, en vez de fallar o cambiar la voz en silencio.
+- **Redescarga automática (decisión del autor):** si la voz ausente es una voz conocida, el servidor además inicia una descarga en segundo plano desde el repositorio de voces de Piper (Hugging Face, la misma fuente que `setup.sh`) hacia `voices/`. **La petición actual sigue usando la voz predeterminada; la voz original se usa desde la siguiente petición.** El header `X-Voice-Downloading` hace que el aviso diga que la voz se está descargando.
+  - La ruta remota se deriva del nombre del archivo (`en_US-joe-medium` → `en/en_US/joe/medium/...`), así que solo se pueden descargar voces del `VOICE_MAP` fijo, nunca una ruta que venga del usuario.
+  - Los archivos se escriben como `.part` y se renombran al terminar (primero la config, al final el modelo), de modo que un modelo en disco siempre tiene su config y una descarga fallida no deja nada a medias.
+  - Una descarga por voz a la vez; tras un fallo (por ejemplo sin internet) no se reintenta durante 5 minutos.
+  - **Alternativa evaluada y no elegida:** descargar y esperar dentro de la misma petición. Una voz `high` pesa decenas de MB y la app parecería congelada.
+- **Verificado por el asistente:** descarga a una carpeta temporal, carga de la voz descargada con Piper, sin descarga duplicada mientras hay una en curso, los ids desconocidos no inician descarga, un 404 no deja archivos y la espera antes de reintentar. **No verificado:** el flujo completo por HTTP con el aviso en pantalla, ni el comportamiento bajo `launchd`.
+- Commit: `7bb4421` (respaldo); la descarga en segundo plano se agregó después.
+
 ## 6. Despliegue: de "correr un .sh" a "no tocar la Terminal"
 
 **Requisito del autor:** el equipo no está acostumbrado a la Terminal; había que evitarles cualquier contacto con ella.
@@ -258,6 +312,8 @@ Opciones evaluadas: archivo `.command`, app de Automator, app de AppleScript, `l
 - **Carpetas protegidas de macOS.** Un servicio en segundo plano no puede leer `~/Downloads`, Escritorio ni Documentos. `instalar.command` detecta esas rutas y se detiene con un mensaje claro en vez de fallar en silencio.
 
 **Límites que no se pueden resolver desde el código:** inicio de sesión automático tras reiniciar (un LaunchAgent necesita sesión), que la Mac no entre en reposo, y IP fija en el router. Quedan documentados en el README.
+
+**Dónde vive cada cosa y qué pasa al mover el proyecto.** Las voces viven en `voices/` dentro del proyecto (`VOICES_DIR` es relativo a `main.py`), y la descarga automática del §5.1 escribe ahí. Si se mueve la carpeta completa, las voces, los datos y los logs se mueven con ella. **Pero `instalar.command` escribe la ruta absoluta en el servicio `launchd` y en la app del Dock, así que tras mover el proyecto hay que volver a correr `instalar.command` desde la ubicación nueva**; si no, el servicio no arrancará tras un reinicio. Guardar las voces fuera del proyecto (por ejemplo en `~/Library/Application Support`) sobreviviría a un movimiento o a una reinstalación, pero se dejó fuera por ser un cambio mayor (ver §12).
 
 ## 7. Seguridad
 
@@ -305,7 +361,9 @@ Los precios se citaron de memoria y deben confirmarse en las páginas oficiales.
 ## 10. Pendientes y limitaciones conocidas
 
 - **No verificado de punta a punta por el asistente:** el reinicio automático tras reboot/cierre de sesión y el caso "servidor detenido → la app lo revive" (el autor probó la instalación en la Mac del cliente).
-- Un `voice` desconocido en `/speak` **cae en silencio a `en_lessac`** en vez de devolver error.
+- Un `voice` desconocido o ausente en `/speak` cae a la voz predeterminada del perfil con un aviso en vez de devolver error (§5.1). **No hay verificación al arrancar** de que todas las voces estén en el host: una voz ausente solo se detecta cuando alguien la pide, y esa primera petición usa la voz predeterminada.
+- El respaldo y la descarga en segundo plano (§5.1) **no están cubiertos por pruebas automáticas** ni se verificaron por HTTP/interfaz.
+- Mover la carpeta del proyecto exige volver a correr `instalar.command` (§6); aún no está documentado en el README.
 - `speed` y los parámetros de ruido se aplican, pero no hay **límite de tamaño de texto** en `/speak`.
 - Etiqueta de Lessac posiblemente incorrecta (§5); sin voz grave en español.
 - Dependencias fijadas de 2024 (FastAPI, `python-multipart`): conviene actualizarlas.
@@ -322,4 +380,28 @@ Los precios se citaron de memoria y deben confirmarse en las páginas oficiales.
 | `41e5afd` | Perfiles, importación, 6 voces nuevas, velocidad y variación |
 | `03e7909` | Corrección: `piper-tts` faltaba en `requirements.txt` |
 | `9b01ad1` | Arranque automático (`launchd`), app del Dock, instaladores |
-| `f39c9d4` | Contraseña de acceso y límite de peticiones |
+| `f39c9d4` | Contraseña de acceso y límite de peticiones ("Fix auth service") |
+| `434bc8a` | Se agrega `DECISIONS.md` |
+| `67180ab` | README y DECISIONS pasan a ser bilingües |
+| `7bb4421` | Respaldo a la voz predeterminada con aviso visible |
+
+## 12. Decisiones a futuro: instalador empaquetado (sin empezar, se deja para el final)
+
+Pregunta evaluada: ¿se puede entregar todo como instalador tipo `.dmg` / `.exe`? Sí; no se implementó nada.
+
+**Mac (`.dmg` o `.pkg`)**
+- Hoy el proyecto necesita Python, un `venv` y los scripts `.command`. Un instalador implicaría congelarlo (PyInstaller / py2app) o incluir Python dentro de una `.app`.
+- El servicio de `launchd` lo crea hoy `instalar.command`. Una `.app` tendría que crearlo en el primer arranque, o se usaría un `.pkg` (que sí puede instalar servicios) en vez de un `.dmg`.
+- `data/`, `voices/` y `logs/` tendrían que vivir en `~/Library/Application Support/...`, porque una `.app` firmada no es escribible. Esto también arreglaría el problema de que mover la carpeta rompe el servicio.
+- La contraseña de acceso se pide hoy con `cambiar-clave.command`; un instalador la pediría en una pantalla de primer arranque.
+- Las voces pueden ir incluidas (cientos de MB) o descargarse en el primer arranque; la descarga automática ya cubre gran parte de la segunda opción.
+- Sin una cuenta de Apple Developer (99 USD al año) para firmar y notarizar, macOS muestra la advertencia de "desarrollador no identificado".
+- `setup.sh` solo descarga el binario de Piper para Apple Silicon (`aarch64`); un Mac Intel necesitaría otro build.
+
+**Windows (`.exe`)**
+- Es un port, no solo empaquetado: `launchd`, `caffeinate`, `.command`, la app del Dock y `osascript` no tienen equivalente y se reemplazarían por una tarea programada o servicio de Windows más un acceso directo o icono en la bandeja.
+- El instalador se haría con Inno Setup o NSIS, con Python congelado con PyInstaller. Piper y las voces tienen builds para Windows.
+- Sin un certificado de firma de código, SmartScreen avisa al usuario.
+- Claramente más trabajo que el instalador de Mac y habría que probarlo en una máquina Windows.
+
+**Recomendación:** con una sola Mac como host (el caso actual), el `.dmg`/`.pkg` es el camino natural. Un `.exe` para Windows solo vale la pena si algún host va a usar Windows. **Pregunta abierta:** ¿se instalará en más de una máquina, o en Windows?

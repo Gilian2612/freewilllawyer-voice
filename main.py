@@ -7,6 +7,7 @@ import secrets
 import struct
 import threading
 import time
+import urllib.request
 import uuid
 from collections import defaultdict, deque
 from pathlib import Path
@@ -41,12 +42,18 @@ PROFILES = {
            "voices": ["es_sharvard", "es_mx", "es_daniela", "es_claude", "es_davefx"], "default_voice": "es_sharvard"},
 }
 
+VOICES_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+DOWNLOAD_RETRY_SECONDS = 300
+
 DATA_DIR = Path(__file__).parent / "data"
 SCRIPTS_FILE = DATA_DIR / "scripts.json"
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 
 _voices = {}
 _scripts_lock = threading.Lock()
+_downloads_lock = threading.Lock()
+_downloading = set()     # voice ids being downloaded right now
+_download_failed = {}    # voice id -> time of last failed attempt
 
 # --- Access control -------------------------------------------------------
 PASSWORD_FILE = DATA_DIR / "password.txt"
@@ -139,11 +146,61 @@ def check_profile(profile: str):
     if profile not in PROFILES:
         raise HTTPException(status_code=404, detail=f"Unknown profile '{profile}'")
 
+def voice_ready(voice_id: str) -> bool:
+    model = VOICE_MAP[voice_id]
+    config = model.with_name(model.name + ".json")
+    return model.exists() and config.exists()
+
+
+def _download_voice(voice_id: str):
+    """Fetch a missing voice from the Piper voices repo (runs in a background thread)."""
+    model = VOICE_MAP[voice_id]
+    # en_US-lessac-medium -> en/en_US/lessac/medium/en_US-lessac-medium
+    locale, speaker, quality = model.stem.split("-")
+    remote = f"{VOICES_BASE_URL}/{locale.split('_')[0]}/{locale}/{speaker}/{quality}/{model.stem}"
+    parts = []
+    try:
+        VOICES_DIR.mkdir(exist_ok=True)
+        # Config first, model last: a model file on disk always has its config
+        for suffix in (".onnx.json", ".onnx"):
+            target = VOICES_DIR / (model.stem + suffix)
+            part = target.with_name(target.name + ".part")
+            parts.append(part)
+            with urllib.request.urlopen(remote + suffix, timeout=30) as r, open(part, "wb") as f:
+                while chunk := r.read(1 << 20):
+                    f.write(chunk)
+            os.replace(part, target)
+        print(f"[voices] downloaded {voice_id}", flush=True)
+    except Exception as e:
+        print(f"[voices] download of {voice_id} failed: {e}", flush=True)
+        for part in parts:
+            part.unlink(missing_ok=True)
+        with _downloads_lock:
+            _download_failed[voice_id] = time.time()
+    finally:
+        with _downloads_lock:
+            _downloading.discard(voice_id)
+
+
+def ensure_voice_download(voice_id: str) -> bool:
+    """Start a background download of a known, missing voice. True if one is running."""
+    if voice_id not in VOICE_MAP or voice_ready(voice_id):
+        return False
+    with _downloads_lock:
+        if voice_id in _downloading:
+            return True
+        if time.time() - _download_failed.get(voice_id, 0) < DOWNLOAD_RETRY_SECONDS:
+            return False
+        _downloading.add(voice_id)
+    threading.Thread(target=_download_voice, args=(voice_id,), daemon=True).start()
+    return True
+
+
 def get_voice(voice_id: str):
     if voice_id not in _voices:
         from piper.voice import PiperVoice
         model_path = VOICE_MAP[voice_id]
-        if not model_path.exists():
+        if not voice_ready(voice_id):
             raise HTTPException(status_code=503, detail=f"Voice '{voice_id}' not found.")
         _voices[voice_id] = PiperVoice.load(str(model_path))
     return _voices[voice_id]
@@ -278,11 +335,15 @@ async def speak(req: TTSRequest):
 
     voice_id = req.voice
     fallback_from = None
-    # Missing/unknown voice: use the profile's default voice and tell the client
-    if voice_id not in VOICE_MAP or not VOICE_MAP[voice_id].exists():
+    downloading = False
+    # Missing/unknown voice: use the profile's default voice and tell the client.
+    # A known voice that is missing is re-downloaded in the background and used from the next request.
+    if voice_id not in VOICE_MAP or not voice_ready(voice_id):
         fallback_from = voice_id
+        downloading = ensure_voice_download(voice_id)
         lang = "es" if voice_id.startswith("es") else "en"
         voice_id = PROFILES[lang]["default_voice"]
+        ensure_voice_download(voice_id)
 
     try:
         voice = get_voice(voice_id)
@@ -323,6 +384,8 @@ async def speak(req: TTSRequest):
         headers = {"Content-Disposition": "inline; filename=speech.wav"}
         if fallback_from:
             headers["X-Voice-Fallback"] = voice_id
+            if downloading:
+                headers["X-Voice-Downloading"] = "1"
         return StreamingResponse(wav, media_type="audio/wav", headers=headers)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -372,9 +372,14 @@
       const fallback = res.headers.get('X-Voice-Fallback');
       const warn = document.getElementById('voice-warning');
       if (fallback) {
-        warn.textContent = isEs
-          ? `No se encontró la voz seleccionada. Se usó la voz predeterminada (${fallback}). Revisa las voces descargadas.`
-          : `The selected voice was not found. The default voice (${fallback}) was used. Check the downloaded voices.`;
+        const downloading = res.headers.get('X-Voice-Downloading');
+        warn.textContent = downloading
+          ? (isEs
+              ? `No se encontró la voz seleccionada. Se usó la voz predeterminada (${fallback}). Se está descargando la voz; estará disponible en la próxima generación.`
+              : `The selected voice was not found. The default voice (${fallback}) was used. The voice is being downloaded and will be available on your next request.`)
+          : (isEs
+              ? `No se encontró la voz seleccionada. Se usó la voz predeterminada (${fallback}). Revisa las voces descargadas.`
+              : `The selected voice was not found. The default voice (${fallback}) was used. Check the downloaded voices.`);
         warn.hidden = false;
       } else {
         warn.hidden = true;

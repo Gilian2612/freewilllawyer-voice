@@ -157,6 +157,10 @@ freewilllawyer-voice/
 
 `Ctrl + C` in the Terminal where it is running.
 
+## Things to keep in mind
+
+- **If you move the project folder, run `instalar.command` again** from the new location. The automatic startup service and the Dock app store the absolute path of the folder; if it is moved, the server will not start after a reboot and the Dock app will not be able to revive it. Voices, data and logs move with the folder without problems.
+
 ---
 
 # Español
@@ -311,3 +315,7 @@ freewilllawyer-voice/
 ## Detener el servidor
 
 `Ctrl + C` en la Terminal donde está corriendo.
+
+## Cosas a tener en cuenta
+
+- **Si mueves la carpeta del proyecto, vuelve a correr `instalar.command`** desde la ubicación nueva. El servicio de arranque automático y la app del Dock guardan la ruta absoluta de la carpeta; si se mueve, el servidor no arrancará tras un reinicio y la app del Dock no podrá revivirlo. Las voces, los datos y los logs se mueven con la carpeta sin problema.
