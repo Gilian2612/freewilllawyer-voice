@@ -276,7 +276,13 @@ async def speak(req: TTSRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    voice_id = req.voice if req.voice in VOICE_MAP else "en_lessac"
+    voice_id = req.voice
+    fallback_from = None
+    # Missing/unknown voice: use the profile's default voice and tell the client
+    if voice_id not in VOICE_MAP or not VOICE_MAP[voice_id].exists():
+        fallback_from = voice_id
+        lang = "es" if voice_id.startswith("es") else "en"
+        voice_id = PROFILES[lang]["default_voice"]
 
     try:
         voice = get_voice(voice_id)
@@ -314,8 +320,10 @@ async def speak(req: TTSRequest):
         wav.write(audio_data)
         wav.seek(0)
 
-        return StreamingResponse(wav, media_type="audio/wav",
-                                 headers={"Content-Disposition": "inline; filename=speech.wav"})
+        headers = {"Content-Disposition": "inline; filename=speech.wav"}
+        if fallback_from:
+            headers["X-Voice-Fallback"] = voice_id
+        return StreamingResponse(wav, media_type="audio/wav", headers=headers)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
