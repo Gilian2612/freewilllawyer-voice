@@ -129,6 +129,24 @@ ipconfig getifaddr en0
 2. Open the browser and go to `http://MACBOOK_IP:8000`
 3. Done, nothing to install
 
+## Access from outside the WiFi (Tailscale)
+
+Private access over [Tailscale](https://tailscale.com): only invited devices can reach the server, and traffic is encrypted by Tailscale (the address is plain `http`, no `https` for now).
+
+**On the host Mac (admin, once):**
+1. Run `tailscale-activar.command` (double-click). It installs Tailscale only if it is missing (official installer, asks for the Mac's admin password), waits until you sign in, and prints the addresses to use.
+2. In the admin panel (https://login.tailscale.com/admin, Machines): turn off key expiry for this Mac and **Share** it with each remote person's email.
+
+**For each remote person:** install Tailscale on their device (https://tailscale.com/download: Mac, Windows, iPhone or Android), accept the invitation and open the address printed by the script, for example `http://MAC_NAME.your-network.ts.net:8000`. The password screen of the app appears.
+
+The Mac must stay on with the voice server running. Do not enable Tailscale *Funnel* (it makes the app public).
+
+Official reference: [Install Tailscale on macOS](https://tailscale.com/docs/install/mac). It requires macOS 12 (Monterey) or later and recommends the *standalone* variant from Tailscale's package server, which is the one `tailscale-activar.command` installs. On first launch, Tailscale's onboarding asks to install its VPN configuration: accept it. The standalone variant also uses a macOS *system extension* that you must approve in System Settings (Privacy & Security); until you do, Tailscale does not start.
+
+**Which Tailscale to install?**
+- **Host Mac:** use `tailscale-activar.command` (standalone variant, recommended by Tailscale). The Mac App Store variant should also work, but it has not been tested with the script, which would see it as already installed and skip the installation. Never have both variants installed at the same time; to switch, delete `Tailscale.app`, empty the Trash and restart the Mac.
+- **Remote person's device:** any variant on any system works (Mac, Windows, iPhone, Android). The easiest is the app from their device's store or from https://tailscale.com/download.
+
 ## Project structure
 
 ```
@@ -139,6 +157,7 @@ freewilllawyer-voice/
 ├── instalar.command       # One-time install of the auto-start service + Dock app
 ├── desinstalar.command    # Removes the auto-start service
 ├── cambiar-clave.command  # Sets / changes the access password
+├── tailscale-activar.command  # Installs Tailscale if missing and prints the remote-access address
 ├── static/
 │   ├── index.html         # Web interface
 │   └── login.html         # Password screen
@@ -288,6 +307,24 @@ ipconfig getifaddr en0
 2. Abrir el navegador y entrar a `http://IP_DE_LA_MACBOOK:8000`
 3. Listo, sin instalar nada
 
+## Acceso desde fuera del WiFi (Tailscale)
+
+Acceso privado con [Tailscale](https://tailscale.com): solo entran los dispositivos invitados y el tráfico va cifrado por Tailscale (la dirección es `http` simple, sin `https` por ahora).
+
+**En la Mac host (administrador, una vez):**
+1. Corre `tailscale-activar.command` (doble clic). Instala Tailscale solo si falta (instalador oficial, pide la contraseña de administrador de la Mac), espera a que inicies sesión y muestra las direcciones a usar.
+2. En el panel de administración (https://login.tailscale.com/admin, Machines): desactiva la expiración de la clave de esta Mac y **compártela** (Share) con el correo de cada persona remota.
+
+**Para cada persona remota:** instalar Tailscale en su dispositivo (https://tailscale.com/download: Mac, Windows, iPhone o Android), aceptar la invitación y abrir la dirección que muestra el script, por ejemplo `http://NOMBRE_MAC.tu-red.ts.net:8000`. Aparece la pantalla de contraseña de la app.
+
+La Mac debe seguir encendida con el servidor de voz corriendo. No actives *Funnel* de Tailscale (hace pública la app).
+
+Referencia oficial: [Install Tailscale on macOS](https://tailscale.com/docs/install/mac). Requiere macOS 12 (Monterey) o superior y recomienda la variante *standalone* del servidor de paquetes de Tailscale, que es la que instala `tailscale-activar.command`. En el primer arranque, el asistente de Tailscale pide instalar su configuración de VPN: acéptala. La variante standalone también usa una *extensión de sistema* de macOS que debes aprobar en Ajustes del Sistema (Privacidad y seguridad); mientras no lo hagas, Tailscale no arranca.
+
+**¿Qué Tailscale instalar?**
+- **Mac host:** usa `tailscale-activar.command` (variante standalone, la recomendada por Tailscale). La variante de la Mac App Store también debería servir, pero no se probó con el script, que la vería como ya instalada y se saltaría la instalación. Nunca tengas las dos variantes instaladas a la vez; para cambiar, borra `Tailscale.app`, vacía la papelera y reinicia la Mac.
+- **Dispositivo de la persona remota:** sirve cualquier variante en cualquier sistema (Mac, Windows, iPhone, Android). Lo más fácil es la app de la tienda de su dispositivo o la de https://tailscale.com/download.
+
 ## Estructura del proyecto
 
 ```
@@ -298,6 +335,7 @@ freewilllawyer-voice/
 ├── instalar.command       # Instala una vez el servicio de arranque automático + app del Dock
 ├── desinstalar.command    # Quita el servicio de arranque automático
 ├── cambiar-clave.command  # Define / cambia la contraseña de acceso
+├── tailscale-activar.command  # Instala Tailscale si falta y muestra la dirección de acceso remoto
 ├── static/
 │   ├── index.html         # Interfaz web
 │   └── login.html         # Pantalla de contraseña

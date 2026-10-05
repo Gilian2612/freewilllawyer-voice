@@ -133,7 +133,7 @@ Implementation:
 
 **An unrequested measure, reverted.** The assistant disabled FastAPI's `/docs` without being asked. The author asked to turn it back on **excluding the authentication endpoints** from the schema (`include_in_schema=False`); `/docs` remains behind the login.
 
-## 8. Access from outside the network (not implemented yet)
+## 8. Access from outside the network (private Tailscale, over HTTP)
 
 Evaluated: **Tailscale** (private VPN), **Cloudflare Tunnel** and **ngrok**; none of them needs ports opened in the router (the Mac makes the outbound connection).
 
@@ -142,6 +142,14 @@ Evaluated: **Tailscale** (private VPN), **Cloudflare Tunnel** and **ngrok**; non
 **Technical implication identified in advance:** behind a public tunnel, every request reaches the server from `127.0.0.1`, so the per-IP limit would become **shared by everyone** and an attacker could lock the team out of the login. The real IP would have to be read from the tunnel's headers. With Tailscale this problem does not appear.
 
 Prices were quoted from memory and must be confirmed on the official pages.
+
+**Decision (author): private Tailscale, plain HTTP for now.** Reasoning: the traffic is already encrypted end to end by Tailscale, only invited devices reach the app, and it needs **no code change** (the server listens on `0.0.0.0:8000`, so it also answers on the Tailscale address). The remote person gets access by **sharing only the host Mac** with their own Tailscale account, instead of joining the whole network. Tailscale *Funnel* is not used because it makes the app public.
+
+**Automation: `tailscale-activar.command`.** Idempotent: if `Tailscale.app` is already installed it skips the installation; otherwise it downloads the official `.pkg` from `pkgs.tailscale.com` (latest version read from the index page), checks that the package carries Tailscale's signature, and installs it with the Mac's admin password. Then it opens the app, waits until the account is signed in, checks `/health` and prints the addresses (`http://<name>.ts.net:8000` and the `100.x` IP). Homebrew was not used on purpose: the cask/formula names are ambiguous (CLI daemon vs. app) and the official package is simpler to verify.
+
+**What cannot be automated** (stays manual, once): signing in to the Tailscale account, approving the VPN/extension prompt from macOS, and the admin-panel settings (turn off key expiry for the host, share the machine). The remote person's device is installed by them (instructions in the README).
+
+**Verified:** syntax, the dry run (`DRY_RUN=1`), and that the official package downloads and has a valid Apple-notarized Tailscale signature. **Not verified:** a real installation, signing in, the address output and a connection from another device; the script was written without Tailscale installed on the development Mac.
 
 ## 9. Who decided what
 
@@ -165,7 +173,7 @@ Prices were quoted from memory and must be confirmed on the official pages.
 - Possibly wrong Lessac label (§5); no deep voice in Spanish.
 - Dependencies pinned from 2024 (FastAPI, `python-multipart`): they should be updated.
 - No favicon (it causes a harmless 404 in the log).
-- Remote access (§8) not implemented.
+- Remote access (§8): `tailscale-activar.command` written but not yet verified with a real installation or from another device; HTTPS not enabled (§12.3).
 - Importing directly from Instagram (level 2) not implemented.
 
 ## 11. Commit timeline
@@ -182,7 +190,9 @@ Prices were quoted from memory and must be confirmed on the official pages.
 | `67180ab` | README and DECISIONS made bilingual |
 | `7bb4421` | Fallback to the default voice with a visible warning |
 
-## 12. Future decisions: packaged installer (not started, deferred to the end)
+## 12. Future decisions
+
+### 12.1 Packaged installer (not started, deferred to the end)
 
 Question evaluated: can everything be shipped as a `.dmg` / `.exe` style installer? Yes; nothing was implemented.
 
@@ -202,6 +212,26 @@ Question evaluated: can everything be shipped as a `.dmg` / `.exe` style install
 - Clearly more work than the Mac installer and it would need testing on a Windows machine.
 
 **Recommendation:** with a single Mac as host (the current case), the `.dmg`/`.pkg` is the natural path. A Windows `.exe` is only worth it if a host will run Windows. **Open question:** will this be installed on more than one machine, or on Windows?
+
+### 12.2 If remote access later moves from private Tailscale to a public tunnel
+
+Decision for now (§8): start with **private Tailscale**; it needs **no code changes** (the server already listens on `0.0.0.0:8000` and answers on the Tailscale address too). Switching later to Cloudflare Tunnel, ngrok or Tailscale Funnel is a small change, but these points would have to be done first:
+
+1. **Real client IP (code change).** Behind a public tunnel every request reaches the server from `127.0.0.1`, and the rate limiting uses `request.client.host` (`main.py`, in the limiter and in the login). The per-IP limit would become shared by everyone and an attacker could use up the 10 login attempts per minute and lock the team out. The real IP must be read from the tunnel's header (for example `CF-Connecting-IP`) **only for requests coming from the tunnel**, otherwise anyone could forge the header.
+2. **Cookie.** The session cookie does not set `secure=True`. With a public HTTPS URL it should.
+3. **Exposure.** With a public tunnel the login screen is visible to the whole internet (with Tailscale only invited devices see it). Hardening the login (for example longer lockouts after repeated failures) would be a separate security decision.
+4. **Tailscale Funnel** (publishing a service on a public URL) has the same risks as Cloudflare/ngrok and would need the same changes.
+
+Nothing needs to be undone to make the switch: Tailscale and a tunnel can coexist.
+
+### 12.3 HTTPS over Tailscale (`tailscale serve`)
+
+Decided for now: **no HTTPS** (§8). It would be free (Tailscale issues Let's Encrypt certificates for the `.ts.net` name; it needs MagicDNS and "HTTPS Certificates" turned on in the admin panel, then `tailscale serve --bg 8000` on the host). Points to decide first:
+
+- The browser would stop showing "Not secure"; security-wise nothing is gained, because Tailscale already encrypts the traffic.
+- **The machine/network name becomes public** (certificate transparency logs). Nobody could enter with it, but a neutral machine name is advisable.
+- `tailscale serve` is a proxy: every request reaches the app from `127.0.0.1`, so the per-IP limit becomes shared (same effect as §12.2, much milder in a private network). The alternative, `tailscale cert` plus TLS served by the app itself, keeps real IPs but needs code changes and renewal about every 90 days.
+- `secure=True` on the session cookie must **not** be added blindly: some browsers (Safari) do not keep a `secure` cookie on `http://localhost:8000`, which is what the Dock app opens. It would have to be conditional, or the Dock app would have to open the Tailscale address.
 
 ---
 
@@ -334,7 +364,7 @@ Implementación:
 
 **Una medida de más, revertida.** El asistente desactivó `/docs` de FastAPI sin que se pidiera. El autor pidió reactivarlo **excluyendo los endpoints de autenticación** del esquema (`include_in_schema=False`); `/docs` sigue detrás del login.
 
-## 8. Acceso desde fuera de la red (pendiente de implementar)
+## 8. Acceso desde fuera de la red (Tailscale privado, sobre HTTP)
 
 Evaluadas: **Tailscale** (VPN privada), **Cloudflare Tunnel** y **ngrok**; ninguna requiere abrir puertos en el router (la Mac inicia la conexión hacia afuera).
 
@@ -343,6 +373,14 @@ Evaluadas: **Tailscale** (VPN privada), **Cloudflare Tunnel** y **ngrok**; ningu
 **Implicación técnica identificada de antemano:** detrás de un túnel público, todas las peticiones llegan al servidor desde `127.0.0.1`, así que el límite por IP pasaría a ser **compartido por todos** y un atacante podría bloquear el login del equipo. Habría que leer la IP real de las cabeceras del túnel. Con Tailscale este problema no aparece.
 
 Los precios se citaron de memoria y deben confirmarse en las páginas oficiales.
+
+**Decisión (autor): Tailscale privado, HTTP simple por ahora.** Razonamiento: el tráfico ya va cifrado de extremo a extremo por Tailscale, solo entran dispositivos invitados y **no requiere cambios de código** (el servidor escucha en `0.0.0.0:8000`, así que también responde por la dirección de Tailscale). La persona remota entra **compartiéndole solo la Mac host** con su propia cuenta de Tailscale, en vez de unirla a toda la red. No se usa *Funnel* de Tailscale porque hace pública la app.
+
+**Automatización: `tailscale-activar.command`.** Idempotente: si `Tailscale.app` ya está instalado se salta la instalación; si no, descarga el `.pkg` oficial de `pkgs.tailscale.com` (la última versión se lee de la página índice), comprueba que el paquete lleve la firma de Tailscale y lo instala con la contraseña de administrador de la Mac. Luego abre la app, espera a que la cuenta inicie sesión, revisa `/health` y muestra las direcciones (`http://<nombre>.ts.net:8000` y la IP `100.x`). No se usó Homebrew a propósito: los nombres del cask/fórmula son ambiguos (daemon CLI frente a la app) y el paquete oficial es más simple de verificar.
+
+**Lo que no se puede automatizar** (queda manual, una vez): iniciar sesión en la cuenta de Tailscale, aprobar el aviso de VPN/extensión de macOS y los ajustes del panel (desactivar la expiración de la clave del host, compartir la máquina). El dispositivo de la persona remota lo instala ella (instrucciones en el README).
+
+**Verificado:** la sintaxis, la ejecución en seco (`DRY_RUN=1`) y que el paquete oficial se descarga y tiene una firma válida y notarizada de Tailscale. **No verificado:** una instalación real, el inicio de sesión, la salida de las direcciones y una conexión desde otro dispositivo; el script se escribió sin Tailscale instalado en la Mac de desarrollo.
 
 ## 9. Quién decidió qué
 
@@ -366,7 +404,7 @@ Los precios se citaron de memoria y deben confirmarse en las páginas oficiales.
 - Etiqueta de Lessac posiblemente incorrecta (§5); sin voz grave en español.
 - Dependencias fijadas de 2024 (FastAPI, `python-multipart`): conviene actualizarlas.
 - Sin favicon (genera un 404 inofensivo en el log).
-- Acceso remoto (§8) sin implementar.
+- Acceso remoto (§8): `tailscale-activar.command` escrito pero aún sin verificar con una instalación real ni desde otro dispositivo; HTTPS sin activar (§12.3).
 - Importación directa desde Instagram (nivel 2) sin implementar.
 
 ## 11. Cronología resumida (commits)
@@ -383,7 +421,9 @@ Los precios se citaron de memoria y deben confirmarse en las páginas oficiales.
 | `67180ab` | README y DECISIONS pasan a ser bilingües |
 | `7bb4421` | Respaldo a la voz predeterminada con aviso visible |
 
-## 12. Decisiones a futuro: instalador empaquetado (sin empezar, se deja para el final)
+## 12. Decisiones a futuro
+
+### 12.1 Instalador empaquetado (sin empezar, se deja para el final)
 
 Pregunta evaluada: ¿se puede entregar todo como instalador tipo `.dmg` / `.exe`? Sí; no se implementó nada.
 
@@ -403,3 +443,23 @@ Pregunta evaluada: ¿se puede entregar todo como instalador tipo `.dmg` / `.exe`
 - Claramente más trabajo que el instalador de Mac y habría que probarlo en una máquina Windows.
 
 **Recomendación:** con una sola Mac como host (el caso actual), el `.dmg`/`.pkg` es el camino natural. Un `.exe` para Windows solo vale la pena si algún host va a usar Windows. **Pregunta abierta:** ¿se instalará en más de una máquina, o en Windows?
+
+### 12.2 Si el acceso remoto pasa de Tailscale privado a un túnel público
+
+Decisión por ahora (§8): empezar con **Tailscale privado**; **no requiere cambios de código** (el servidor ya escucha en `0.0.0.0:8000` y responde también por la dirección de Tailscale). Pasar después a Cloudflare Tunnel, ngrok o Tailscale Funnel es un cambio pequeño, pero habría que hacer antes estos puntos:
+
+1. **IP real del cliente (cambio de código).** Detrás de un túnel público todas las peticiones llegan al servidor desde `127.0.0.1`, y el límite de uso usa `request.client.host` (`main.py`, en el limitador y en el login). El límite por IP pasaría a ser compartido por todos y un atacante podría gastar los 10 intentos de login por minuto y dejar al equipo fuera. Hay que leer la IP real del header del túnel (por ejemplo `CF-Connecting-IP`) **solo en las peticiones que vengan del túnel**, porque si no cualquiera podría falsificar el header.
+2. **Cookie.** La cookie de sesión no tiene `secure=True`. Con una URL pública en HTTPS debería tenerlo.
+3. **Exposición.** Con un túnel público la pantalla de login es visible desde todo internet (con Tailscale solo la ven los dispositivos invitados). Endurecer el login (por ejemplo bloqueos más largos tras varios fallos) sería una decisión de seguridad aparte.
+4. **Tailscale Funnel** (publicar un servicio en una URL pública) tiene los mismos riesgos que Cloudflare/ngrok y exigiría los mismos cambios.
+
+No hay que deshacer nada para hacer el cambio: Tailscale y un túnel pueden convivir.
+
+### 12.3 HTTPS sobre Tailscale (`tailscale serve`)
+
+Decidido por ahora: **sin HTTPS** (§8). Sería gratis (Tailscale emite certificados de Let's Encrypt para el nombre `.ts.net`; requiere activar MagicDNS y "HTTPS Certificates" en el panel y luego `tailscale serve --bg 8000` en el host). Puntos a decidir antes:
+
+- El navegador dejaría de mostrar "No seguro"; en seguridad no se gana nada, porque Tailscale ya cifra el tráfico.
+- **El nombre de la máquina/red se vuelve público** (registros de transparencia de certificados). Nadie podría entrar con él, pero conviene un nombre de máquina neutro.
+- `tailscale serve` es un proxy: todas las peticiones llegan a la app desde `127.0.0.1`, así que el límite por IP pasa a ser compartido (mismo efecto que en §12.2, mucho más leve en una red privada). La alternativa, `tailscale cert` más TLS servido por la propia app, conserva las IPs reales pero exige cambios de código y renovación cada ~90 días.
+- No hay que poner `secure=True` en la cookie de sesión sin más: algunos navegadores (Safari) no guardan una cookie `secure` en `http://localhost:8000`, que es lo que abre la app del Dock. Tendría que ser condicional, o la app del Dock tendría que abrir la dirección de Tailscale.
