@@ -90,7 +90,7 @@ In Spanish the catalog has **no** voice deeper than the existing ones (≈120 Hz
   - One download per voice at a time; after a failure (for example no internet) it is not retried for 5 minutes.
   - **Alternative weighed and not chosen:** download and wait inside the same request. A `high` voice is tens of MB and the app would look frozen.
 - **Verified by the assistant:** download into a temporary folder, loading the downloaded voice with Piper, no duplicate download while one is running, unknown ids do not start a download, a 404 leaves no files, and the retry cooldown. **Not verified:** the full flow over HTTP with the UI warning on screen, nor behavior under `launchd`.
-- Commit: `7bb4421` (fallback); the background download was added afterwards.
+- Commits: `7bb4421` (fallback to the default voice with a visible warning) and `97501df` (background re-download of the missing voice, UI warning for it, and this documentation).
 
 ## 6. Deployment: from "run a .sh" to "never touch the Terminal"
 
@@ -161,7 +161,6 @@ Prices were quoted from memory and must be confirmed on the official pages.
 - **Not verified end to end by the assistant:** automatic restart after reboot/logout and the "server stopped → the app revives it" case (the author tested the installation on the client's Mac).
 - An unknown or missing `voice` in `/speak` falls back to the profile's default voice with a warning instead of returning an error (§5.1). **There is no check at startup** that all voices are present on the host: a missing voice is only detected when someone asks for it, and that first request uses the default voice.
 - The fallback and the background download (§5.1) are **not covered by automated tests** and were not verified over HTTP/UI.
-- Moving the project folder requires running `instalar.command` again (§6); this is not yet documented in the README.
 - `speed` and the noise parameters are applied, but there is **no text size limit** on `/speak`.
 - Possibly wrong Lessac label (§5); no deep voice in Spanish.
 - Dependencies pinned from 2024 (FastAPI, `python-multipart`): they should be updated.
@@ -292,7 +291,7 @@ En español **no hay** una voz más grave que las existentes (≈120 Hz) en el c
   - Una descarga por voz a la vez; tras un fallo (por ejemplo sin internet) no se reintenta durante 5 minutos.
   - **Alternativa evaluada y no elegida:** descargar y esperar dentro de la misma petición. Una voz `high` pesa decenas de MB y la app parecería congelada.
 - **Verificado por el asistente:** descarga a una carpeta temporal, carga de la voz descargada con Piper, sin descarga duplicada mientras hay una en curso, los ids desconocidos no inician descarga, un 404 no deja archivos y la espera antes de reintentar. **No verificado:** el flujo completo por HTTP con el aviso en pantalla, ni el comportamiento bajo `launchd`.
-- Commit: `7bb4421` (respaldo); la descarga en segundo plano se agregó después.
+- Commits: `7bb4421` (respaldo a la voz predeterminada con aviso visible) y `97501df` (redescarga en segundo plano de la voz ausente, aviso en la interfaz para ese caso y esta documentación).
 
 ## 6. Despliegue: de "correr un .sh" a "no tocar la Terminal"
 
@@ -363,7 +362,6 @@ Los precios se citaron de memoria y deben confirmarse en las páginas oficiales.
 - **No verificado de punta a punta por el asistente:** el reinicio automático tras reboot/cierre de sesión y el caso "servidor detenido → la app lo revive" (el autor probó la instalación en la Mac del cliente).
 - Un `voice` desconocido o ausente en `/speak` cae a la voz predeterminada del perfil con un aviso en vez de devolver error (§5.1). **No hay verificación al arrancar** de que todas las voces estén en el host: una voz ausente solo se detecta cuando alguien la pide, y esa primera petición usa la voz predeterminada.
 - El respaldo y la descarga en segundo plano (§5.1) **no están cubiertos por pruebas automáticas** ni se verificaron por HTTP/interfaz.
-- Mover la carpeta del proyecto exige volver a correr `instalar.command` (§6); aún no está documentado en el README.
 - `speed` y los parámetros de ruido se aplican, pero no hay **límite de tamaño de texto** en `/speak`.
 - Etiqueta de Lessac posiblemente incorrecta (§5); sin voz grave en español.
 - Dependencias fijadas de 2024 (FastAPI, `python-multipart`): conviene actualizarlas.
